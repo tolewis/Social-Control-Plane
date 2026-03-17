@@ -1,66 +1,80 @@
+'use client';
+
+import { useCallback, useState } from 'react';
 import { Card, StatusPill } from '../_components/ui';
+import { useConnections } from '../hooks/useConnections';
+import { deleteConnection, getAuthUrl } from '../_lib/api';
+import type { ConnectionRecord } from '../_lib/api';
 
-type ConnStatus = 'healthy' | 'attention' | 'down';
+type ConnTone = 'ok' | 'warn' | 'err';
 
-type Connection = {
-  id: string;
-  provider: 'LinkedIn' | 'Facebook' | 'Instagram' | 'X';
-  account: string;
-  status: ConnStatus;
-  lastVerified: string;
-  token: string;
-  scopes: string;
-  note?: string;
-};
+function pillForStatus(status: ConnectionRecord['status']): ReturnType<typeof StatusPill> {
+  switch (status) {
+    case 'connected':
+      return <StatusPill tone="ok">healthy</StatusPill>;
+    case 'pending':
+      return <StatusPill tone="warn">pending</StatusPill>;
+    case 'revoked':
+      return <StatusPill tone="err">revoked</StatusPill>;
+    case 'error':
+      return <StatusPill tone="err">error</StatusPill>;
+  }
+}
 
-const connections: Connection[] = [
-  {
-    id: 'conn_001',
-    provider: 'LinkedIn',
-    account: 'Tim',
-    status: 'healthy',
-    lastVerified: '2m ago',
-    token: 'expires in 31d',
-    scopes: 'w_member_social, r_liteprofile',
-  },
-  {
-    id: 'conn_002',
-    provider: 'Facebook',
-    account: 'Tackle Room',
-    status: 'healthy',
-    lastVerified: '6m ago',
-    token: 'expires in 59d',
-    scopes: 'pages_manage_posts, pages_read_engagement',
-  },
-  {
-    id: 'conn_003',
-    provider: 'Instagram',
-    account: 'Tackle Room',
-    status: 'attention',
-    lastVerified: '6m ago',
-    token: 'expires in 18h',
-    scopes: 'instagram_basic, instagram_content_publish',
-    note: 'Token refresh needed soon; queue may block to avoid surprise failures.',
-  },
-  {
-    id: 'conn_004',
-    provider: 'X',
-    account: 'Tim',
-    status: 'down',
-    lastVerified: '—',
-    token: 'not configured',
-    scopes: '—',
-    note: 'Adapter not wired yet. Keep visible so “missing capability” is explicit.',
-  },
-];
-
-function pillForStatus(status: ConnStatus) {
-  if (status === 'healthy') return <StatusPill tone="ok">healthy</StatusPill>;
-  if (status === 'attention') return <StatusPill tone="warn">attention</StatusPill>;
-  return <StatusPill tone="err">down</StatusPill>;
+function statusTone(status: ConnectionRecord['status']): ConnTone {
+  if (status === 'connected') return 'ok';
+  if (status === 'pending') return 'warn';
+  return 'err';
 }
 
 export default function ConnectionsPage() {
+  const { connections, loading, error, refetch } = useConnections();
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const healthy = connections.filter((c) => c.status === 'connected').length;
+  const attention = connections.filter((c) => c.status === 'pending').length;
+  const down = connections.filter((c) => c.status === 'revoked' || c.status === 'error').length;
+
+  const handleConnect = useCallback(async (provider: ConnectionRecord['provider']) => {
+    setActionLoading(provider);
+    setActionError(null);
+    try {
+      const res = await getAuthUrl(provider);
+      window.location.href = res.url;
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to get auth URL');
+    } finally {
+      setActionLoading(null);
+    }
+  }, []);
+
+  const handleDisconnect = useCallback(async (id: string) => {
+    setActionLoading(id);
+    setActionError(null);
+    try {
+      await deleteConnection(id);
+      await refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Disconnect failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [refetch]);
+
+  const handleRefresh = useCallback(async (provider: ConnectionRecord['provider']) => {
+    setActionLoading(provider);
+    setActionError(null);
+    try {
+      const res = await getAuthUrl(provider);
+      window.location.href = res.url;
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to refresh');
+    } finally {
+      setActionLoading(null);
+    }
+  }, []);
+
   return (
     <>
       <section>
@@ -74,13 +88,19 @@ export default function ConnectionsPage() {
       <section className="section grid">
         <Card title="Summary" kicker="Signals">
           <div className="chips">
-            <StatusPill tone="ok">3 healthy</StatusPill>
-            <StatusPill tone="warn">1 attention</StatusPill>
-            <StatusPill tone="err">1 down</StatusPill>
-            <StatusPill tone="neutral">last check 2m ago</StatusPill>
+            {loading ? (
+              <StatusPill tone="neutral">loading...</StatusPill>
+            ) : (
+              <>
+                <StatusPill tone="ok">{healthy} healthy</StatusPill>
+                <StatusPill tone="warn">{attention} attention</StatusPill>
+                <StatusPill tone="err">{down} down</StatusPill>
+                <StatusPill tone="neutral">{connections.length} total</StatusPill>
+              </>
+            )}
           </div>
           <div className="subtle" style={{ marginTop: 12 }}>
-            Planned: background health checks, expiry alerts, and “block publish when unsafe” policies.
+            Planned: background health checks, expiry alerts, and &quot;block publish when unsafe&quot; policies.
           </div>
         </Card>
 
@@ -95,6 +115,12 @@ export default function ConnectionsPage() {
           </div>
         </Card>
 
+        {(error || actionError) && (
+          <Card title="Error" kicker="API" className="full">
+            <StatusPill tone="err">{error || actionError}</StatusPill>
+          </Card>
+        )}
+
         <Card title="Connections" kicker="Inventory" className="full">
           <div className="tableWrap">
             <table className="table">
@@ -102,40 +128,86 @@ export default function ConnectionsPage() {
                 <tr>
                   <th>Connection</th>
                   <th>Status</th>
-                  <th>Last verified</th>
-                  <th>Token</th>
-                  <th>Scopes</th>
-                  <th>Notes</th>
+                  <th>Created</th>
+                  <th>Updated</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {connections.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <div style={{ fontWeight: 680 }}>{c.provider}</div>
-                      <div className="subtle">{c.account}</div>
-                      <div className="mono subtle">{c.id}</div>
-                    </td>
-                    <td>{pillForStatus(c.status)}</td>
-                    <td className="mono">{c.lastVerified}</td>
-                    <td className="mono subtle">{c.token}</td>
-                    <td className="mono subtle">{c.scopes}</td>
-                    <td className="subtle">{c.note ?? '—'}</td>
-                    <td>
-                      {c.status === 'healthy' ? (
-                        <button type="button" className="btn ghost">Re-check</button>
-                      ) : c.status === 'attention' ? (
-                        <button type="button" className="btn primary">Refresh token</button>
-                      ) : (
-                        <button type="button" className="btn primary">Connect</button>
-                      )}
-                    </td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="subtle">Loading connections...</td>
                   </tr>
-                ))}
+                ) : connections.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="subtle">No connections configured. Use the buttons below to connect a provider.</td>
+                  </tr>
+                ) : (
+                  connections.map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        <div style={{ fontWeight: 680 }}>{c.provider}</div>
+                        {c.displayName && <div className="subtle">{c.displayName}</div>}
+                        <div className="mono subtle">{c.id.slice(0, 12)}</div>
+                      </td>
+                      <td>{pillForStatus(c.status)}</td>
+                      <td className="mono">{new Date(c.createdAt).toLocaleDateString()}</td>
+                      <td className="mono">{new Date(c.updatedAt).toLocaleDateString()}</td>
+                      <td>
+                        {c.status === 'connected' ? (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            disabled={actionLoading === c.id}
+                            onClick={() => handleDisconnect(c.id)}
+                          >
+                            Disconnect
+                          </button>
+                        ) : c.status === 'pending' ? (
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={actionLoading === c.provider}
+                            onClick={() => handleRefresh(c.provider)}
+                          >
+                            Refresh token
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={actionLoading === c.provider}
+                            onClick={() => handleConnect(c.provider)}
+                          >
+                            Reconnect
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
+
+          {!loading && (
+            <div style={{ marginTop: 16 }}>
+              <div className="kicker" style={{ marginBottom: 10 }}>Add provider</div>
+              <div className="chips">
+                {(['linkedin', 'facebook', 'instagram', 'x'] as const).map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    className="btn"
+                    disabled={actionLoading === provider}
+                    onClick={() => handleConnect(provider)}
+                  >
+                    Connect {provider}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       </section>
     </>
