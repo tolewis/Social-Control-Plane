@@ -503,13 +503,21 @@ app.post('/publish/:draftId', async (request, reply) => {
     data: { status: 'queued' },
   });
 
-  // Enqueue BullMQ job.
+  // Fetch connection to include provider in job data.
+  const connection = await prisma.socialConnection.findUnique({
+    where: { id: draft.connectionId },
+  });
+
+  // Enqueue BullMQ job — job name must be 'draft.publish' to match worker handler map.
   await publishQueue.add(
-    'publish',
+    'draft.publish',
     {
-      jobId: job.id,
+      accountId: draft.connectionId,
       draftId: draft.id,
       connectionId: draft.connectionId,
+      provider: connection?.provider ?? 'linkedin',
+      publishMode: draft.publishMode.toLowerCase(),
+      idempotencyKey: idemKey,
     },
     {
       jobId: job.id,

@@ -23,14 +23,14 @@ Separate three things: app credentials, connection tokens, and operational mappi
 All agent writes go through a strict command path: create draft -> attach media -> schedule/publish request -> queue assignment -> provider publish attempt -> receipt/reconciliation.
 
 ### Guardrails
-- one active publish worker per connected account
+- one active publish worker per connected account (serialized queue, no burst)
 - idempotency key on every mutation
 - dedupe hash on account + content + media + scheduled time window
-- no hard delete by default
-- ambiguous result => reconciliation state, not silent failure
+- agents are rate-limited per account — cannot flood-publish
+- publish failures are visible and explainable, not silently swallowed
 
 ## Delete model
-Default = soft delete / canceled. Hard delete only for cleanup/admin flows. Provider-side delete should be separated from internal record deletion.
+**Hard delete.** No soft delete. Agent memory can repost anything deleted. Keep the data model simple — when something is deleted, it's gone. Provider-side delete is a separate action from internal record deletion.
 
 ## Frontend stance
 Frontend for 2030 should mean fast, touch-friendly, clear states, responsive layouts that do not suck on phone, and no overdesigned glassmorphism bullshit.
@@ -47,6 +47,13 @@ Frontend for 2030 should mean fast, touch-friendly, clear states, responsive lay
 - **Direct publish mode** where agents can publish straight to platforms when appropriate
 - UI must support reviewing copy, reviewing media, approving, rejecting, rescheduling, and promoting drafts to publish
 
+
+## Deployment model
+- **Local-first** with robust self-hosting as the primary target
+- Final destination is **web-based** (hosted deployment)
+- Login/auth screen is **deferred** for local mode — can be overridden/skipped when running locally
+- Architecture must support operator auth so it can be enabled when going web-hosted
+- The local experience should work without any login gate
 
 ## Secret-management stance
 - Start with **local encrypted secrets** for v1

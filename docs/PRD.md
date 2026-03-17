@@ -55,15 +55,22 @@ Meanwhile the credential problem is ugly enough that replacing Postiz only makes
 - receipt stored
 - ambiguous outcomes enter reconciliation
 
+## Agent API requirements
+Agents (Katya, etc.) get full CRUD access to the publishing pipeline:
+- Create, edit, delete, schedule, reschedule, and modify posts
+- Direct publish when appropriate (bypasses review queue)
+- Rate-limited per account — no burst publishing (one at a time per account, serialized queue)
+- Everything Postiz can do, but with reliable idempotency and clear failure states
+
 ## Hard requirements
 1. Every mutation must support idempotency keys.
 2. Every connected account must have a serialized publish queue.
-3. Delete must default to soft cancel, not destructive removal.
-4. Ambiguous provider outcomes must become reconciliation states.
-5. Credentials/tokens must be encrypted at rest.
-6. Desktop and mobile are first-class UI targets.
-7. UI quality bar is modern, calm, touch-friendly, and system-driven.
-8. Styling should take structural inspiration from Contractor-AI, but not its color palette.
+3. Delete is **hard delete**. No soft delete complexity. Agent memory can repost.
+4. Credentials/tokens must be encrypted at rest.
+5. Desktop and mobile are first-class UI targets.
+6. UI quality bar is modern, calm, touch-friendly, and system-driven.
+7. Styling should take structural inspiration from Contractor-AI, but not its color palette.
+8. Local-first deployment must be robust. Final destination is web-hosted. Login screen deferred for local but architecture must support it.
 
 ## Non-goals for MVP
 - broad multi-tenant SaaS complexity

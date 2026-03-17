@@ -85,7 +85,7 @@ export function fetchHealth() {
 /* ------------------------------------------------------------------ */
 
 export function fetchConnections() {
-  return apiFetch<{ persistence: string; connections: ConnectionRecord[] }>('/connections');
+  return apiFetch<{ connections: ConnectionRecord[] }>('/connections');
 }
 
 export function fetchConnection(id: string) {
@@ -115,7 +115,7 @@ export function deleteConnection(id: string) {
 /* ------------------------------------------------------------------ */
 
 export function fetchDrafts() {
-  return apiFetch<{ persistence: string; drafts: DraftRecord[] }>('/drafts');
+  return apiFetch<{ drafts: DraftRecord[] }>('/drafts');
 }
 
 export function fetchDraft(id: string) {
@@ -161,7 +161,7 @@ export function publishDraft(draftId: string, idempotencyKey?: string) {
 /* ------------------------------------------------------------------ */
 
 export function fetchJobs() {
-  return apiFetch<{ persistence: string; jobs: PublishJobRecord[] }>('/jobs');
+  return apiFetch<{ jobs: PublishJobRecord[] }>('/jobs');
 }
 
 /* ------------------------------------------------------------------ */
