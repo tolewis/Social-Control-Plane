@@ -9,37 +9,26 @@ import {
   XAdapter,
 } from '@scp/providers';
 import type {
-  ConnectionRecord,
-  DraftRecord,
   HttpRequest,
   ProviderId,
-  PublishJobRecord,
   ProviderPublishAdapter,
 } from '@scp/shared';
 import { isProviderId, NotImplementedError, PROVIDERS } from '@scp/shared';
+import { prisma } from './db.js';
+import { publishQueue } from './queue.js';
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
-const nowIso = () => new Date().toISOString();
-
-/**
- * NOTE: This API currently uses in-memory storage.
- * The Prisma schema exists for the durable implementation, but wiring is intentionally deferred.
- */
-const connections = new Map<string, ConnectionRecord>();
-const connectionSecrets = new Map<
-  string,
-  { accessToken: string; refreshToken?: string; expiresAtIso?: string }
->();
-
-const drafts = new Map<string, DraftRecord>();
-const publishJobs = new Map<string, PublishJobRecord>();
-
+// ---------------------------------------------------------------------------
+// Auth sessions stay in-memory — they're short-lived, pre-login state.
+// ---------------------------------------------------------------------------
 const authSessions = new Map<
   string,
   { provider: ProviderId; redirectUri: string; createdAtIso: string }
 >();
+
+const nowIso = () => new Date().toISOString();
 
 const redirectUriFor = (provider: ProviderId): string => {
   switch (provider) {
@@ -52,7 +41,6 @@ const redirectUriFor = (provider: ProviderId): string => {
     case 'x':
       return process.env.X_REDIRECT_URI || '';
     default:
-      // Exhaustive by type, but keep runtime safety.
       throw new Error(`unknown provider: ${provider}`);
   }
 };
@@ -72,8 +60,14 @@ const safeAdapterName = (provider: ProviderId): string => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
 app.get('/health', async () => ({ ok: true, service: 'api' }));
 
+// ---------------------------------------------------------------------------
+// Auth routes (unchanged — auth sessions stay in-memory)
+// ---------------------------------------------------------------------------
 app.get('/auth/urls', async () => {
   const result: Record<string, { url?: string; state?: string; error?: string }> = {};
 
@@ -132,7 +126,6 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
       code: z.string().min(1),
       state: z.string().min(1),
       redirectUri: z.string().url().optional(),
-      /** If true, API will execute the request with fetch(). Useful for local dev only. */
       perform: z.boolean().optional(),
     })
     .parse(request.body);
@@ -155,11 +148,10 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
     return {
       performed: false,
       request: tokenReq,
-      note: 'Token exchange is designed to be executed by the worker (network side-effects). Set perform=true for local dev.'
+      note: 'Token exchange is designed to be executed by the worker (network side-effects). Set perform=true for local dev.',
     };
   }
 
-  // Best-effort local dev flow.
   const res = await fetch(tokenReq.url, {
     method: tokenReq.method,
     headers: tokenReq.headers,
@@ -177,34 +169,35 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
 
   const tokens = adapter.normalizeTokenResponse(raw);
 
-  const id = crypto.randomUUID();
-  const connection: ConnectionRecord = {
-    id,
-    provider: params.provider,
-    status: 'connected',
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-
-  connections.set(id, connection);
-
-  const expiresAtIso =
+  const expiresAt =
     typeof tokens.expiresInSeconds === 'number'
-      ? new Date(Date.now() + tokens.expiresInSeconds * 1000).toISOString()
+      ? new Date(Date.now() + tokens.expiresInSeconds * 1000)
       : undefined;
 
-  connectionSecrets.set(id, {
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-    expiresAtIso,
+  const connection = await prisma.socialConnection.create({
+    data: {
+      provider: params.provider,
+      displayName: '',
+      accountRef: '',
+      encryptedToken: tokens.accessToken,
+      encryptedRefresh: tokens.refreshToken ?? null,
+      scopes: tokens.scope ? tokens.scope.split(/[\s,]+/) : [],
+      expiresAt,
+      status: 'connected',
+    },
   });
 
-  // State is single-use.
   authSessions.delete(body.state);
 
   return {
     performed: true,
-    connection,
+    connection: {
+      id: connection.id,
+      provider: connection.provider,
+      status: connection.status,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    },
     tokens: {
       accessToken: '[redacted]',
       refreshToken: tokens.refreshToken ? '[redacted]' : undefined,
@@ -216,10 +209,46 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
   };
 });
 
-app.get('/connections', async () => ({
-  persistence: 'memory',
-  connections: Array.from(connections.values()),
-}));
+// ---------------------------------------------------------------------------
+// Connections — full CRUD
+// ---------------------------------------------------------------------------
+app.get('/connections', async () => {
+  const connections = await prisma.socialConnection.findMany({
+    orderBy: { createdAt: 'desc' },
+  });
+  return {
+    connections: connections.map((c) => ({
+      id: c.id,
+      provider: c.provider,
+      displayName: c.displayName,
+      accountRef: c.accountRef,
+      status: c.status,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+  };
+});
+
+app.get('/connections/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  const connection = await prisma.socialConnection.findUnique({
+    where: { id: params.id },
+  });
+  if (!connection) return reply.code(404).send({ error: 'connection_not_found' });
+
+  return {
+    connection: {
+      id: connection.id,
+      provider: connection.provider,
+      displayName: connection.displayName,
+      accountRef: connection.accountRef,
+      status: connection.status,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    },
+  };
+});
 
 app.post('/connections', async (request, reply) => {
   const body = z
@@ -233,32 +262,89 @@ app.post('/connections', async (request, reply) => {
     })
     .parse(request.body);
 
-  const id = crypto.randomUUID();
-  const connection: ConnectionRecord = {
-    id,
-    provider: body.provider,
-    displayName: body.displayName,
-    accountRef: body.accountRef,
-    status: 'connected',
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-
-  connections.set(id, connection);
-  connectionSecrets.set(id, {
-    accessToken: body.accessToken,
-    refreshToken: body.refreshToken,
-    expiresAtIso: body.expiresAtIso,
+  const connection = await prisma.socialConnection.create({
+    data: {
+      provider: body.provider,
+      displayName: body.displayName ?? '',
+      accountRef: body.accountRef ?? '',
+      encryptedToken: body.accessToken,
+      encryptedRefresh: body.refreshToken ?? null,
+      scopes: [],
+      expiresAt: body.expiresAtIso ? new Date(body.expiresAtIso) : null,
+      status: 'connected',
+    },
   });
 
   reply.code(201);
-  return { connection };
+  return {
+    connection: {
+      id: connection.id,
+      provider: connection.provider,
+      displayName: connection.displayName,
+      accountRef: connection.accountRef,
+      status: connection.status,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    },
+  };
 });
 
-app.get('/drafts', async () => ({
-  persistence: 'memory',
-  drafts: Array.from(drafts.values()),
-}));
+app.delete('/connections/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  try {
+    await prisma.socialConnection.delete({ where: { id: params.id } });
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'P2025') return reply.code(404).send({ error: 'connection_not_found' });
+    throw err;
+  }
+
+  return { deleted: true };
+});
+
+// ---------------------------------------------------------------------------
+// Drafts — full CRUD
+// ---------------------------------------------------------------------------
+app.get('/drafts', async () => {
+  const drafts = await prisma.draft.findMany({
+    orderBy: { createdAt: 'desc' },
+  });
+  return {
+    drafts: drafts.map((d) => ({
+      id: d.id,
+      connectionId: d.connectionId,
+      publishMode: d.publishMode.toLowerCase(),
+      content: d.content,
+      title: d.title,
+      scheduledFor: d.scheduledFor?.toISOString() ?? undefined,
+      status: d.status,
+      createdAt: d.createdAt.toISOString(),
+      updatedAt: d.updatedAt.toISOString(),
+    })),
+  };
+});
+
+app.get('/drafts/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  const draft = await prisma.draft.findUnique({ where: { id: params.id } });
+  if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
+
+  return {
+    draft: {
+      id: draft.id,
+      connectionId: draft.connectionId,
+      publishMode: draft.publishMode.toLowerCase(),
+      content: draft.content,
+      title: draft.title,
+      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
+      status: draft.status,
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+    },
+  };
+});
 
 app.post('/drafts', async (request, reply) => {
   const body = z
@@ -266,29 +352,105 @@ app.post('/drafts', async (request, reply) => {
       connectionId: z.string().min(1),
       publishMode: z.enum(['draft', 'direct']),
       content: z.string().min(1),
+      title: z.string().optional(),
       scheduledFor: z.string().datetime().optional(),
     })
     .parse(request.body);
 
-  const connection = connections.get(body.connectionId);
+  // Verify connection exists.
+  const connection = await prisma.socialConnection.findUnique({
+    where: { id: body.connectionId },
+  });
   if (!connection) return reply.code(400).send({ error: 'unknown_connection' });
 
-  const draft: DraftRecord = {
-    id: crypto.randomUUID(),
-    connectionId: body.connectionId,
-    publishMode: body.publishMode,
-    content: body.content,
-    scheduledFor: body.scheduledFor,
-    status: body.publishMode === 'draft' ? 'draft' : 'queued',
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
+  const draft = await prisma.draft.create({
+    data: {
+      connectionId: body.connectionId,
+      publishMode: body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT',
+      content: body.content,
+      title: body.title ?? null,
+      scheduledFor: body.scheduledFor ? new Date(body.scheduledFor) : null,
+      status: body.publishMode === 'draft' ? 'draft' : 'queued',
+    },
+  });
 
-  drafts.set(draft.id, draft);
   reply.code(201);
-  return { draft };
+  return {
+    draft: {
+      id: draft.id,
+      connectionId: draft.connectionId,
+      publishMode: draft.publishMode.toLowerCase(),
+      content: draft.content,
+      title: draft.title,
+      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
+      status: draft.status,
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+    },
+  };
 });
 
+app.put('/drafts/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const body = z
+    .object({
+      content: z.string().min(1).optional(),
+      title: z.string().optional(),
+      scheduledFor: z.string().datetime().nullable().optional(),
+      publishMode: z.enum(['draft', 'direct']).optional(),
+    })
+    .parse(request.body);
+
+  const existing = await prisma.draft.findUnique({ where: { id: params.id } });
+  if (!existing) return reply.code(404).send({ error: 'draft_not_found' });
+
+  const data: Record<string, unknown> = {};
+  if (body.content !== undefined) data.content = body.content;
+  if (body.title !== undefined) data.title = body.title;
+  if (body.scheduledFor !== undefined) {
+    data.scheduledFor = body.scheduledFor ? new Date(body.scheduledFor) : null;
+  }
+  if (body.publishMode !== undefined) {
+    data.publishMode = body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT';
+  }
+
+  const draft = await prisma.draft.update({
+    where: { id: params.id },
+    data,
+  });
+
+  return {
+    draft: {
+      id: draft.id,
+      connectionId: draft.connectionId,
+      publishMode: draft.publishMode.toLowerCase(),
+      content: draft.content,
+      title: draft.title,
+      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
+      status: draft.status,
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+    },
+  };
+});
+
+app.delete('/drafts/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  try {
+    await prisma.draft.delete({ where: { id: params.id } });
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'P2025') return reply.code(404).send({ error: 'draft_not_found' });
+    throw err;
+  }
+
+  return { deleted: true };
+});
+
+// ---------------------------------------------------------------------------
+// Publish — enqueue via BullMQ + rate limit per connection
+// ---------------------------------------------------------------------------
 app.post('/publish/:draftId', async (request, reply) => {
   const params = z.object({ draftId: z.string().min(1) }).parse(request.params);
   const body = z
@@ -297,33 +459,129 @@ app.post('/publish/:draftId', async (request, reply) => {
     })
     .parse(request.body ?? {});
 
-  const draft = drafts.get(params.draftId);
+  const draft = await prisma.draft.findUnique({ where: { id: params.draftId } });
   if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
 
-  draft.status = 'queued';
-  draft.updatedAt = nowIso();
-  drafts.set(draft.id, draft);
+  // --- Idempotency check ---
+  const idemKey = body.idempotencyKey ?? crypto.randomUUID();
+  const existingIdem = await prisma.idempotencyKey.findUnique({
+    where: { key: idemKey },
+  });
+  if (existingIdem?.responseJson) {
+    // Return cached response.
+    return existingIdem.responseJson;
+  }
 
-  const job: PublishJobRecord = {
-    id: crypto.randomUUID(),
-    draftId: draft.id,
-    connectionId: draft.connectionId,
-    status: 'pending',
-    idempotencyKey: body.idempotencyKey || crypto.randomUUID(),
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
+  // --- Rate limit: one active job per connection ---
+  const activeJob = await prisma.publishJob.findFirst({
+    where: {
+      connectionId: draft.connectionId,
+      status: { in: ['PENDING', 'PROCESSING'] },
+    },
+  });
+  if (activeJob) {
+    return reply.code(429).send({
+      error: 'rate_limited',
+      message: 'An active publish job already exists for this connection. Wait for it to complete.',
+      activeJobId: activeJob.id,
+    });
+  }
+
+  // --- Create job record + enqueue ---
+  const job = await prisma.publishJob.create({
+    data: {
+      draftId: draft.id,
+      connectionId: draft.connectionId,
+      status: 'PENDING',
+      idempotencyKey: idemKey,
+    },
+  });
+
+  // Mark draft as queued.
+  await prisma.draft.update({
+    where: { id: draft.id },
+    data: { status: 'queued' },
+  });
+
+  // Enqueue BullMQ job.
+  await publishQueue.add(
+    'publish',
+    {
+      jobId: job.id,
+      draftId: draft.id,
+      connectionId: draft.connectionId,
+    },
+    {
+      jobId: job.id,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    },
+  );
+
+  const responsePayload = {
+    queued: true,
+    draft: {
+      id: draft.id,
+      connectionId: draft.connectionId,
+      publishMode: draft.publishMode.toLowerCase(),
+      content: draft.content,
+      status: 'queued',
+      createdAt: draft.createdAt.toISOString(),
+      updatedAt: draft.updatedAt.toISOString(),
+    },
+    job: {
+      id: job.id,
+      draftId: job.draftId,
+      connectionId: job.connectionId,
+      status: job.status,
+      idempotencyKey: job.idempotencyKey,
+      createdAt: job.createdAt.toISOString(),
+      updatedAt: job.updatedAt.toISOString(),
+    },
   };
 
-  publishJobs.set(job.id, job);
+  // Store idempotency record.
+  await prisma.idempotencyKey.upsert({
+    where: { key: idemKey },
+    create: {
+      key: idemKey,
+      scope: 'publish',
+      requestHash: `draft:${draft.id}`,
+      responseJson: responsePayload,
+    },
+    update: {
+      responseJson: responsePayload,
+    },
+  });
 
-  return { queued: true, draft, job };
+  return responsePayload;
 });
 
-app.get('/jobs', async () => ({
-  persistence: 'memory',
-  jobs: Array.from(publishJobs.values()),
-}));
+// ---------------------------------------------------------------------------
+// Jobs — read-only listing
+// ---------------------------------------------------------------------------
+app.get('/jobs', async () => {
+  const jobs = await prisma.publishJob.findMany({
+    orderBy: { createdAt: 'desc' },
+  });
+  return {
+    jobs: jobs.map((j) => ({
+      id: j.id,
+      draftId: j.draftId,
+      connectionId: j.connectionId,
+      status: j.status,
+      idempotencyKey: j.idempotencyKey,
+      receiptJson: j.receiptJson,
+      errorMessage: j.errorMessage,
+      createdAt: j.createdAt.toISOString(),
+      updatedAt: j.updatedAt.toISOString(),
+    })),
+  };
+});
 
+// ---------------------------------------------------------------------------
+// Job execute — kept for local dev / manual testing (worker normally handles this)
+// ---------------------------------------------------------------------------
 app.post('/jobs/:jobId/execute', async (request, reply) => {
   const params = z.object({ jobId: z.string().min(1) }).parse(request.params);
   const body = z
@@ -332,18 +590,19 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
     })
     .parse(request.body ?? {});
 
-  const job = publishJobs.get(params.jobId);
+  const job = await prisma.publishJob.findUnique({ where: { id: params.jobId } });
   if (!job) return reply.code(404).send({ error: 'job_not_found' });
 
-  const draft = drafts.get(job.draftId);
+  const draft = await prisma.draft.findUnique({ where: { id: job.draftId } });
   if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
 
-  const connection = connections.get(job.connectionId);
-  const secrets = connectionSecrets.get(job.connectionId);
+  const connection = await prisma.socialConnection.findUnique({
+    where: { id: job.connectionId },
+  });
+  if (!connection) return reply.code(400).send({ error: 'connection_not_ready' });
+  if (!connection.encryptedToken) return reply.code(400).send({ error: 'connection_not_ready' });
 
-  if (!connection || !secrets) return reply.code(400).send({ error: 'connection_not_ready' });
-
-  const authAdapter = createAuthAdapter(connection.provider);
+  const authAdapter = createAuthAdapter(connection.provider as ProviderId);
   const publishAdapter = authAdapter as unknown as ProviderPublishAdapter;
 
   if (typeof publishAdapter.buildPublishRequest !== 'function') {
@@ -360,13 +619,18 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
   let publishReq: HttpRequest;
   try {
     publishReq = publishAdapter.buildPublishRequest({
-      accessToken: secrets.accessToken,
+      accessToken: connection.encryptedToken,
       accountRef: connection.accountRef,
       text: draft.content,
       idempotencyKey: job.idempotencyKey,
     });
   } catch (err) {
-    const msg = err instanceof NotImplementedError ? err.message : (err instanceof Error ? err.message : 'publish_build_failed');
+    const msg =
+      err instanceof NotImplementedError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'publish_build_failed';
     return reply.code(400).send({ error: msg });
   }
 
@@ -380,13 +644,14 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
           authorization: publishReq.headers.authorization ? 'Bearer [redacted]' : undefined,
         },
       },
-      note: 'Publish execution is typically worker-owned. Set perform=true for local dev.'
+      note: 'Publish execution is typically worker-owned. Set perform=true for local dev.',
     };
   }
 
-  job.status = 'processing';
-  job.updatedAt = nowIso();
-  publishJobs.set(job.id, job);
+  await prisma.publishJob.update({
+    where: { id: job.id },
+    data: { status: 'PROCESSING' },
+  });
 
   const res = await fetch(publishReq.url, {
     method: publishReq.method,
@@ -396,29 +661,32 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
   const raw = await res.json().catch(() => ({ error: 'non_json_response' }));
 
   if (!res.ok) {
-    job.status = 'failed';
-    job.errorMessage = `publish_failed:${res.status}`;
-    job.updatedAt = nowIso();
-    publishJobs.set(job.id, job);
-
-    draft.status = 'failed';
-    draft.updatedAt = nowIso();
-    drafts.set(draft.id, draft);
+    await prisma.publishJob.update({
+      where: { id: job.id },
+      data: { status: 'FAILED', errorMessage: `publish_failed:${res.status}` },
+    });
+    await prisma.draft.update({
+      where: { id: draft.id },
+      data: { status: 'failed' },
+    });
 
     return reply.code(400).send({ error: 'publish_failed', status: res.status, raw });
   }
 
-  job.status = 'succeeded';
-  job.receiptJson = raw;
-  job.updatedAt = nowIso();
-  publishJobs.set(job.id, job);
+  await prisma.publishJob.update({
+    where: { id: job.id },
+    data: { status: 'SUCCEEDED', receiptJson: raw },
+  });
+  await prisma.draft.update({
+    where: { id: draft.id },
+    data: { status: 'published' },
+  });
 
-  draft.status = 'published';
-  draft.updatedAt = nowIso();
-  drafts.set(draft.id, draft);
-
-  return { performed: true, job, receipt: raw };
+  return { performed: true, job: { id: job.id, status: 'SUCCEEDED' }, receipt: raw };
 });
 
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);
 app.listen({ port, host: '0.0.0.0' });
