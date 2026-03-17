@@ -17,6 +17,12 @@ import { isProviderId, NotImplementedError, PROVIDERS } from '@scp/shared';
 import { prisma } from './db.js';
 import { publishQueue } from './queue.js';
 
+// Prisma model types for map callback annotations.
+// Defined locally to avoid version-mismatch issues with the generated client.
+type SocialConnectionRow = { id: string; provider: string; displayName: string; accountRef: string; status: string; createdAt: Date; updatedAt: Date };
+type DraftRow = { id: string; connectionId: string; publishMode: string; content: string; title: string | null; scheduledFor: Date | null; status: string; createdAt: Date; updatedAt: Date };
+type PublishJobRow = { id: string; draftId: string; connectionId: string; status: string; idempotencyKey: string; receiptJson: unknown; errorMessage: string | null; createdAt: Date; updatedAt: Date };
+
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
@@ -217,7 +223,7 @@ app.get('/connections', async () => {
     orderBy: { createdAt: 'desc' },
   });
   return {
-    connections: connections.map((c) => ({
+    connections: connections.map((c: SocialConnectionRow) => ({
       id: c.id,
       provider: c.provider,
       displayName: c.displayName,
@@ -311,7 +317,7 @@ app.get('/drafts', async () => {
     orderBy: { createdAt: 'desc' },
   });
   return {
-    drafts: drafts.map((d) => ({
+    drafts: drafts.map((d: DraftRow) => ({
       id: d.id,
       connectionId: d.connectionId,
       publishMode: d.publishMode.toLowerCase(),
@@ -573,7 +579,7 @@ app.get('/jobs', async () => {
     orderBy: { createdAt: 'desc' },
   });
   return {
-    jobs: jobs.map((j) => ({
+    jobs: jobs.map((j: PublishJobRow) => ({
       id: j.id,
       draftId: j.draftId,
       connectionId: j.connectionId,

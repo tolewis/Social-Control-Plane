@@ -1,8 +1,8 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-export const redis = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
-
-export const publishQueue = new Queue('scp-jobs', { connection: redis });
+// Pass URL string directly to BullMQ to avoid ioredis version mismatch between deps.
+export const publishQueue = new Queue('scp-jobs', {
+  connection: { url: REDIS_URL, maxRetriesPerRequest: null },
+});
