@@ -1,19 +1,23 @@
+import { Card } from '../_components/ui';
+import { ReviewConsole } from './ReviewConsole';
+
 export default function ReviewPage() {
   return (
-    <section className="grid">
-      <article className="card wide">
-        <div className="label">Review copy</div>
-        <p className="lead">Agents can create drafts for review. UI handles copy review, media inspection, approval, rejection, and rescheduling.</p>
-      </article>
-      <article className="card">
-        <div className="label">Actions</div>
-        <div className="chips">
-          <span className="chip">Approve</span>
-          <span className="chip">Reject</span>
-          <span className="chip">Reschedule</span>
-          <span className="chip">Publish now</span>
-        </div>
-      </article>
-    </section>
+    <>
+      <section>
+        <div className="kicker">Approval gate</div>
+        <h1 className="pageTitle">Review drafts like an operator.</h1>
+        <p className="lead">
+          Agents can draft. Humans can approve. This console focuses on copy, media, links, connection readiness, and
+          publishing receipts.
+        </p>
+      </section>
+
+      <section className="section grid">
+        <Card title="Drafts" kicker="Inbox" className="full">
+          <ReviewConsole />
+        </Card>
+      </section>
+    </>
   );
 }

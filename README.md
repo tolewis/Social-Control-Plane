@@ -1,6 +1,6 @@
 # Social Control Plane
 
-Status: Planning
+Status: MVP scaffold built
 Owner: Tim + Katya
 Created: 2026-03-16
 Mode: Internal tool first
