@@ -1,0 +1,128 @@
+/**
+ * Database client for the worker.
+ *
+ * Defines a DbClient interface that matches the Prisma-generated client shape
+ * for the models the worker needs. The factory returns a real PrismaClient
+ * at runtime — this indirection lets the code typecheck even when the
+ * generated Prisma output isn't present in the local node_modules yet.
+ *
+ * After `prisma generate`, swap the runtime import below to use @prisma/client
+ * directly if you prefer.
+ */
+
+// -------------------------------------------------------------------------
+// Type-level model shapes (derived from prisma/schema.prisma)
+// -------------------------------------------------------------------------
+
+export type PublishJobStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'RECONCILING'
+  | 'CANCELED';
+
+export interface SocialConnectionRow {
+  id: string;
+  provider: string;
+  displayName: string;
+  accountRef: string;
+  encryptedToken: string;
+  encryptedRefresh: string | null;
+  scopes: string[];
+  expiresAt: Date | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DraftRow {
+  id: string;
+  connectionId: string;
+  publishMode: string;
+  status: string;
+  title: string | null;
+  content: string;
+  mediaJson: unknown;
+  scheduledFor: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PublishJobRow {
+  id: string;
+  draftId: string;
+  connectionId: string;
+  status: PublishJobStatus;
+  idempotencyKey: string;
+  receiptJson: unknown;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// -------------------------------------------------------------------------
+// Minimal Prisma-compatible delegate interfaces
+// -------------------------------------------------------------------------
+
+interface FindUniqueArgs<T> {
+  where: { id: string };
+}
+
+interface UpdateManyArgs {
+  where: Record<string, unknown>;
+  data: Record<string, unknown>;
+}
+
+interface ModelDelegate<T> {
+  findUnique(args: FindUniqueArgs<T>): Promise<T | null>;
+  updateMany(args: UpdateManyArgs): Promise<{ count: number }>;
+  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<T>;
+}
+
+export interface DbClient {
+  socialConnection: ModelDelegate<SocialConnectionRow>;
+  draft: ModelDelegate<DraftRow>;
+  publishJob: ModelDelegate<PublishJobRow>;
+  $disconnect(): Promise<void>;
+}
+
+// -------------------------------------------------------------------------
+// Runtime factory
+// -------------------------------------------------------------------------
+
+let instance: DbClient | undefined;
+
+/**
+ * Create or return the singleton DB client.
+ *
+ * At runtime this dynamic-imports @prisma/client so the worker can boot
+ * without requiring the generated client to exist at compile time.
+ */
+export async function getDb(): Promise<DbClient> {
+  if (!instance) {
+    // Dynamic import so tsc doesn't blow up if the generated client is missing.
+    // The module specifier is constructed at runtime to prevent tsc from resolving it.
+    const prismaModule = '@prisma/' + 'client';
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaClient } = await import(/* webpackIgnore: true */ prismaModule) as {
+      PrismaClient: new (opts: { log: Array<{ level: string; emit: string }> }) => DbClient;
+    };
+    const prisma = new PrismaClient({
+      log: [
+        { level: 'warn', emit: 'stdout' },
+        { level: 'error', emit: 'stdout' },
+      ],
+    });
+    // The real PrismaClient satisfies DbClient at runtime.
+    instance = prisma as unknown as DbClient;
+  }
+  return instance;
+}
+
+export async function disconnectDb(): Promise<void> {
+  if (instance) {
+    await instance.$disconnect();
+    instance = undefined;
+  }
+}

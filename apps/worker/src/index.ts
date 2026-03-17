@@ -11,6 +11,7 @@ import {
 } from './workerJobs/types.js';
 import { createAccountLockManager } from './workerLocks/accountLocks.js';
 import { createJobHandlers } from './workerJobs/handlers.js';
+import { getDb, disconnectDb } from './db.js';
 
 async function main(): Promise<void> {
   const config = makeConfig(process.env);
@@ -48,7 +49,8 @@ async function main(): Promise<void> {
     lockTtlMs: config.accountLockTtlMs,
   });
 
-  const handlers = createJobHandlers({ log, queue });
+  const db = await getDb();
+  const handlers = createJobHandlers({ log, queue, db });
 
   const worker = new Worker<ScpJobData, unknown, ScpJobName>(
     QUEUE_NAME,
@@ -116,6 +118,7 @@ async function main(): Promise<void> {
     await queueEvents.close();
     await queue.close();
     await accountLocks.close();
+    await disconnectDb();
     log.info('shutdown.done');
   };
 

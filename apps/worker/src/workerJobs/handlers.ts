@@ -1,5 +1,6 @@
 import type { Job, Queue } from 'bullmq';
 
+import type { DbClient } from '../db.js';
 import type { Logger } from '../workerLogger.js';
 import type { JobNameToData, ScpJobName } from './types.js';
 import { handleDraftCancel } from './handlers/handleDraftCancel.js';
@@ -12,7 +13,7 @@ type HandlerMap = {
   ) => Promise<unknown>;
 };
 
-export function createJobHandlers(ctx: { log: Logger; queue: Queue }): HandlerMap {
+export function createJobHandlers(ctx: { log: Logger; queue: Queue; db: DbClient }): HandlerMap {
   return {
     'draft.publish': (job) => handleDraftPublish(job, ctx),
     'draft.reconcile': (job) => handleDraftReconcile(job, ctx),
