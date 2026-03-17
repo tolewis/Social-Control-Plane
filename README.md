@@ -54,3 +54,29 @@ The right replacement is **API-first, queue-first, credentials-first**. The hard
 
 ## First technical opinion
 Do **not** build a Postiz clone monolith. Build a narrower, tougher product around X, LinkedIn, Facebook, and Instagram first.
+
+
+## Repo status
+A runnable MVP scaffold now exists with:
+- `apps/web` — Next.js responsive operator UI shell
+- `apps/api` — Fastify API skeleton
+- `apps/worker` — worker/queue skeleton
+- `packages/shared` — shared types/contracts
+- `packages/providers` — provider auth adapter foundation
+- `prisma/schema.prisma` — initial data model
+- `docker-compose.dev.yml` — Postgres + Redis for local dev
+
+## Quick start
+1. Copy `.env.example` to `.env`
+2. Start local infra:
+   - `docker compose -f docker-compose.dev.yml up -d`
+3. Install deps:
+   - `corepack pnpm install`
+4. Run apps:
+   - `corepack pnpm dev:web`
+   - `corepack pnpm dev:api`
+   - `corepack pnpm dev:worker`
+
+## Current MVP reality
+This is a strong scaffold, not a finished product yet.
+The first real end-to-end slice should be LinkedIn auth + draft -> review -> queue -> publish receipt.

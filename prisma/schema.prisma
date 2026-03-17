@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PublishMode {
+  DRAFT
+  DIRECT
+}
+
+enum PublishJobStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  RECONCILING
+  CANCELED
+}
+
+model Operator {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SocialConnection {
+  id               String   @id @default(cuid())
+  provider         String
+  displayName      String
+  accountRef       String
+  encryptedToken   String
+  encryptedRefresh String?
+  scopes           String[]
+  expiresAt        DateTime?
+  status           String   @default("connected")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  drafts           Draft[]
+  jobs             PublishJob[]
+}
+
+model Draft {
+  id             String   @id @default(cuid())
+  connectionId   String
+  publishMode    PublishMode
+  status         String   @default("draft")
+  title          String?
+  content        String   @db.Text
+  mediaJson      Json?
+  scheduledFor   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  connection     SocialConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  jobs           PublishJob[]
+}
+
+model PublishJob {
+  id               String   @id @default(cuid())
+  draftId          String
+  connectionId     String
+  status           PublishJobStatus @default(PENDING)
+  idempotencyKey   String   @unique
+  receiptJson      Json?
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  draft            Draft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  connection       SocialConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  action      String
+  payload     Json?
+  createdAt   DateTime @default(now())
+}
+
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  scope       String
+  requestHash String
+  responseJson Json?
+  createdAt   DateTime @default(now())
+}

@@ -1,0 +1,16 @@
+{
+  "name": "social-control-plane",
+  "private": true,
+  "packageManager": "pnpm@10.5.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "corepack pnpm --filter @scp/web dev",
+    "dev:api": "corepack pnpm --filter @scp/api dev",
+    "dev:worker": "corepack pnpm --filter @scp/worker dev",
+    "build": "corepack pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck"
+  }
+}
