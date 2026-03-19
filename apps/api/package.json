@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "6.4.1",
     "bullmq": "^5.34.8",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",
@@ -21,7 +21,7 @@
     "@scp/providers": "workspace:*"
   },
   "devDependencies": {
-    "prisma": "^6.4.1",
+    "prisma": "6.4.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

@@ -1,4 +1,4 @@
-import type { ReactNode, SVGProps } from 'react';
+import type { ReactElement, ReactNode, SVGProps } from 'react';
 
 export type IconProps = SVGProps<SVGSVGElement> & {
   title?: string;
@@ -102,4 +102,66 @@ export function IconChevronDown(props: IconProps) {
       <path d="M6 9l6 6 6-6" />
     </BaseIcon>
   );
+}
+
+/* ── Provider brand icons (filled, no stroke) ── */
+
+type ProviderIconProps = { size?: number; className?: string };
+
+export function IconLinkedIn({ size = 20, className }: ProviderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden>
+      <rect width="24" height="24" rx="4" fill="#0A66C2" />
+      <path d="M7.5 9.5h2v7h-2zM8.5 6.5a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3zM11.5 9.5h1.9v1h0a2.1 2.1 0 0 1 1.9-1c2 0 2.4 1.3 2.4 3.1v3.9h-2v-3.4c0-.8 0-1.9-1.2-1.9s-1.3.9-1.3 1.8v3.5h-2z" fill="#fff" />
+    </svg>
+  );
+}
+
+export function IconFacebook({ size = 20, className }: ProviderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden>
+      <rect width="24" height="24" rx="4" fill="#1877F2" />
+      <path d="M16.5 12.5h-2.5v8h-3v-8h-2v-2.5h2v-1.5c0-2.2 1-3.5 3.5-3.5h2v2.5h-1.3c-.9 0-1.2.4-1.2 1.2v1.3h2.5z" fill="#fff" />
+    </svg>
+  );
+}
+
+export function IconInstagram({ size = 20, className }: ProviderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden>
+      <defs>
+        <linearGradient id="ig" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FFC107" />
+          <stop offset=".5" stopColor="#F44336" />
+          <stop offset="1" stopColor="#9C27B0" />
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="4" fill="url(#ig)" />
+      <rect x="5" y="5" width="14" height="14" rx="4" stroke="#fff" strokeWidth="1.5" fill="none" />
+      <circle cx="12" cy="12" r="3.5" stroke="#fff" strokeWidth="1.5" fill="none" />
+      <circle cx="17" cy="7" r="1" fill="#fff" />
+    </svg>
+  );
+}
+
+export function IconX({ size = 20, className }: ProviderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden>
+      <rect width="24" height="24" rx="4" fill="#000" />
+      <path d="M16.3 5.5h2.1l-4.6 5.3 5.4 7.2h-4.2l-3.3-4.4-3.8 4.4H5.8l4.9-5.6L5.5 5.5h4.3l3 4 3.5-4zm-.7 11.2h1.2L9.5 6.7H8.2z" fill="#fff" />
+    </svg>
+  );
+}
+
+const providerIcons: Record<string, (props: ProviderIconProps) => ReactElement> = {
+  linkedin: IconLinkedIn,
+  facebook: IconFacebook,
+  instagram: IconInstagram,
+  x: IconX,
+};
+
+export function ProviderIcon({ provider, size = 20, className }: ProviderIconProps & { provider: string }) {
+  const Icon = providerIcons[provider];
+  if (!Icon) return null;
+  return <Icon size={size} className={className} />;
 }

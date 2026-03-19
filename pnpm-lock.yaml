@@ -22,8 +22,8 @@ importers:
         specifier: ^10.0.2
         version: 10.1.0
       '@prisma/client':
-        specifier: ^6.4.1
-        version: 6.19.2(prisma@6.4.1(typescript@5.9.3))(typescript@5.9.3)
+        specifier: 6.4.1
+        version: 6.4.1(prisma@6.4.1(typescript@5.9.3))(typescript@5.9.3)
       '@scp/providers':
         specifier: workspace:*
         version: link:../../packages/providers
@@ -44,7 +44,7 @@ importers:
         version: 3.25.76
     devDependencies:
       prisma:
-        specifier: ^6.4.1
+        specifier: 6.4.1
         version: 6.4.1(typescript@5.9.3)
       tsx:
         specifier: ^4.19.3
@@ -84,8 +84,8 @@ importers:
   apps/worker:
     dependencies:
       '@prisma/client':
-        specifier: ^6.4.1
-        version: 6.19.2(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3)
+        specifier: 6.4.1
+        version: 6.4.1(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3)
       '@scp/providers':
         specifier: workspace:*
         version: link:../../packages/providers
@@ -489,18 +489,6 @@ packages:
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
-
-  '@prisma/client@6.19.2':
-    resolution: {integrity: sha512-gR2EMvfK/aTxsuooaDA32D8v+us/8AAet+C3J1cc04SW35FPdZYgLF+iN4NDLUgAaUGTKdAB0CYenu1TAgGdMg==}
-    engines: {node: '>=18.18'}
-    peerDependencies:
-      prisma: '*'
-      typescript: '>=5.1.0'
-    peerDependenciesMeta:
-      prisma:
-        optional: true
-      typescript:
-        optional: true
 
   '@prisma/client@6.4.1':
     resolution: {integrity: sha512-A7Mwx44+GVZVexT5e2GF/WcKkEkNNKbgr059xpr5mn+oUm2ZW1svhe+0TRNBwCdzhfIZ+q23jEgsNPvKD9u+6g==}
@@ -1297,14 +1285,9 @@ snapshots:
 
   '@pinojs/redact@0.4.0': {}
 
-  '@prisma/client@6.19.2(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3)':
+  '@prisma/client@6.4.1(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3)':
     optionalDependencies:
       prisma: 6.19.2(typescript@5.9.3)
-      typescript: 5.9.3
-
-  '@prisma/client@6.19.2(prisma@6.4.1(typescript@5.9.3))(typescript@5.9.3)':
-    optionalDependencies:
-      prisma: 6.4.1(typescript@5.9.3)
       typescript: 5.9.3
 
   '@prisma/client@6.4.1(prisma@6.4.1(typescript@5.9.3))(typescript@5.9.3)':

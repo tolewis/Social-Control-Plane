@@ -7,3 +7,5 @@ dist
 coverage
 .prisma
 .DS_Store
+
+apps/web/tsconfig.tsbuildinfo

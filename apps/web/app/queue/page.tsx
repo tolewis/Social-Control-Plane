@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { StatusPill } from '../_components/ui';
+import { ProviderIcon } from '../_components/icons';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
@@ -95,7 +96,7 @@ export default function QueuePage() {
               {items.map((i) => (
                 <tr key={i.fullId}>
                   <td className="mono">{i.id}</td>
-                  <td>{i.provider}</td>
+                  <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ProviderIcon provider={i.provider} size={18} />{i.provider}</td>
                   <td className="subtle">{i.content}</td>
                   <td className="subtle">{i.mode}</td>
                   <td>{pillForStatus(i.status)}</td>

@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "6.4.1",
     "@scp/providers": "workspace:*",
     "@scp/shared": "workspace:*",
     "bullmq": "^5.43.1",

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { StatusPill } from './_components/ui';
+import { ProviderIcon } from './_components/icons';
 import { useConnections } from './hooks/useConnections';
 import { useDrafts } from './hooks/useDrafts';
 import { useJobs } from './hooks/useJobs';
@@ -53,7 +54,7 @@ export default function OverviewPage() {
   if (loading) {
     return (
       <section>
-        <h1 className="pageTitle">Dashboard</h1>
+        <h1 className="pageTitle">Overview</h1>
         <p className="subtle">Loading...</p>
       </section>
     );
@@ -62,7 +63,7 @@ export default function OverviewPage() {
   if (error) {
     return (
       <section>
-        <h1 className="pageTitle">Dashboard</h1>
+        <h1 className="pageTitle">Overview</h1>
         <div className="emptyState">
           <StatusPill tone="err">API error</StatusPill>
           <p className="subtle" style={{ marginTop: 8 }}>{error}</p>
@@ -76,7 +77,7 @@ export default function OverviewPage() {
 
   return (
     <section>
-      <h1 className="pageTitle">Dashboard</h1>
+      <h1 className="pageTitle">Overview</h1>
 
       <div className="statsRow">
         <div className="stat">
@@ -132,7 +133,7 @@ export default function OverviewPage() {
                     {recentJobs.map((j) => (
                       <tr key={j.id}>
                         <td className="mono">{j.id}</td>
-                        <td>{j.provider}</td>
+                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ProviderIcon provider={j.provider} size={18} />{j.provider}</span></td>
                         <td className="subtle">{j.content}</td>
                         <td>
                           <StatusPill tone={j.status === 'succeeded' ? 'ok' : j.status === 'failed' ? 'err' : 'neutral'}>

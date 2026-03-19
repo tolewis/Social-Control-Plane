@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { StatusPill } from '../_components/ui';
+import { ProviderIcon } from '../_components/icons';
 import { useConnections } from '../hooks/useConnections';
 import { deleteConnection, getAuthUrl } from '../_lib/api';
 import type { ConnectionRecord } from '../_lib/api';
@@ -64,7 +65,8 @@ export default function ConnectionsPage() {
           <p className="subtle" style={{ marginTop: 8 }}>Connect a social account to start publishing.</p>
           <div className="chips" style={{ marginTop: 16 }}>
             {(['linkedin', 'facebook', 'instagram', 'x'] as const).map((provider) => (
-              <button key={provider} type="button" className="btn primary" disabled={actionLoading === provider} onClick={() => handleConnect(provider)}>
+              <button key={provider} type="button" className="btn primary" disabled={actionLoading === provider} onClick={() => handleConnect(provider)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <ProviderIcon provider={provider} size={18} />
                 Connect {provider}
               </button>
             ))}
@@ -86,7 +88,10 @@ export default function ConnectionsPage() {
                 {connections.map((c) => (
                   <tr key={c.id}>
                     <td>
-                      <span style={{ fontWeight: 600 }}>{c.provider}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <ProviderIcon provider={c.provider} size={20} />
+                        <span style={{ fontWeight: 600 }}>{c.provider}</span>
+                      </span>
                       {c.displayName && <span className="subtle"> &middot; {c.displayName}</span>}
                     </td>
                     <td>{pillForStatus(c.status)}</td>
@@ -104,7 +109,8 @@ export default function ConnectionsPage() {
           <div style={{ marginTop: 20 }}>
             <div className="chips">
               {(['linkedin', 'facebook', 'instagram', 'x'] as const).map((provider) => (
-                <button key={provider} type="button" className="btn" disabled={actionLoading === provider} onClick={() => handleConnect(provider)}>
+                <button key={provider} type="button" className="btn" disabled={actionLoading === provider} onClick={() => handleConnect(provider)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <ProviderIcon provider={provider} size={16} />
                   + {provider}
                 </button>
               ))}
