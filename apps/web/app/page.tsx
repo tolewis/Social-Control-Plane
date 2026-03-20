@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { StatusPill } from './_components/ui';
-import { ProviderIcon } from './_components/icons';
+import { ProviderIcon, IconPlus, IconSend } from './_components/icons';
 import { useConnections } from './hooks/useConnections';
 import { useDrafts } from './hooks/useDrafts';
 import { useJobs } from './hooks/useJobs';
+import { createDraft } from './_lib/api';
+import type { ConnectionRecord } from './_lib/api';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -15,6 +18,64 @@ function relativeTime(iso: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function QuickCompose({ connections }: { connections: ConnectionRecord[] }) {
+  const router = useRouter();
+  const connected = useMemo(() => connections.filter((c) => c.status === 'connected'), [connections]);
+  const [content, setContent] = useState('');
+  const [connectionId, setConnectionId] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const canSend = content.trim().length > 0 && connectionId && !sending;
+
+  const handleSend = useCallback(async () => {
+    if (!canSend) return;
+    setSending(true);
+    try {
+      await createDraft({ connectionId, publishMode: 'draft', content });
+      setContent('');
+      router.push('/review');
+    } catch {
+      // Silently fail on quick compose, user can retry
+    } finally {
+      setSending(false);
+    }
+  }, [canSend, connectionId, content, router]);
+
+  if (connected.length === 0) return null;
+
+  return (
+    <div className="quickCompose">
+      <textarea
+        placeholder="Quick compose..."
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={2}
+      />
+      <select
+        value={connectionId}
+        onChange={(e) => setConnectionId(e.target.value)}
+      >
+        <option value="">Account</option>
+        {connected.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.provider}{c.displayName ? ` - ${c.displayName}` : ''}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="btn primary"
+        disabled={!canSend}
+        onClick={handleSend}
+        style={{ opacity: canSend ? 1 : 0.5 }}
+        title="Create as draft"
+      >
+        <IconSend width={18} height={18} />
+      </button>
+    </div>
+  );
 }
 
 export default function OverviewPage() {
@@ -43,8 +104,9 @@ export default function OverviewPage() {
         const conn = connections.find((c) => c.id === j.connectionId);
         return {
           id: j.id.slice(0, 8),
-          provider: conn?.provider ?? '—',
-          content: draft?.content.slice(0, 50) ?? '—',
+          provider: conn?.provider ?? '?',
+          displayName: conn?.displayName ?? conn?.provider ?? '?',
+          content: draft?.content.slice(0, 50) ?? '?',
           status: j.status,
           when: relativeTime(j.updatedAt),
         };
@@ -79,6 +141,9 @@ export default function OverviewPage() {
     <section>
       <h1 className="pageTitle">Overview</h1>
 
+      {/* Quick compose */}
+      {!isEmpty && <QuickCompose connections={connections} />}
+
       <div className="statsRow">
         <div className="stat">
           <div className="statValue">{stats.connections}</div>
@@ -108,10 +173,17 @@ export default function OverviewPage() {
         <div className="emptyState">
           <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>No activity yet</p>
           <p className="subtle" style={{ marginTop: 8 }}>
-            Connect a social account to get started. Head to{' '}
-            <a href="/connections" style={{ color: 'var(--cyan)' }}>Connections</a> to link
-            LinkedIn, X, Facebook, or Instagram.
+            Connect a social account to get started, then compose your first post.
           </p>
+          <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <a href="/connections" className="ctaBtn">
+              Connect Account
+            </a>
+            <a href="/compose" className="ctaBtn">
+              <IconPlus width={18} height={18} />
+              Create Post
+            </a>
+          </div>
         </div>
       ) : (
         <>
@@ -123,7 +195,7 @@ export default function OverviewPage() {
                   <thead>
                     <tr>
                       <th>Job</th>
-                      <th>Provider</th>
+                      <th>Account</th>
                       <th>Content</th>
                       <th>Status</th>
                       <th>When</th>
@@ -133,7 +205,12 @@ export default function OverviewPage() {
                     {recentJobs.map((j) => (
                       <tr key={j.id}>
                         <td className="mono">{j.id}</td>
-                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ProviderIcon provider={j.provider} size={18} />{j.provider}</span></td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <ProviderIcon provider={j.provider} size={18} />
+                            {j.displayName}
+                          </span>
+                        </td>
                         <td className="subtle">{j.content}</td>
                         <td>
                           <StatusPill tone={j.status === 'succeeded' ? 'ok' : j.status === 'failed' ? 'err' : 'neutral'}>
@@ -157,8 +234,18 @@ export default function OverviewPage() {
               </p>
             </div>
           )}
+
+          {recentJobs.length === 0 && (
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <a href="/compose" className="ctaBtn">
+                <IconPlus width={18} height={18} />
+                Create your first post
+              </a>
+            </div>
+          )}
         </>
       )}
+
     </section>
   );
 }

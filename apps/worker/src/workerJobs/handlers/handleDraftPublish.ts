@@ -2,6 +2,7 @@ import type { Job, Queue } from 'bullmq';
 
 import type { DbClient } from '../../db.js';
 import type { Logger } from '../../workerLogger.js';
+import { decrypt, encrypt } from '../../crypto.js';
 import type { DraftPublishJobData } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -35,14 +36,31 @@ interface ProviderAuthAdapter {
   };
 }
 
-async function loadLinkedInAdapter(): Promise<ProviderPublishAdapter & ProviderAuthAdapter> {
+type FullAdapter = ProviderPublishAdapter & ProviderAuthAdapter;
+
+async function loadProviderAdapter(provider: string): Promise<FullAdapter | null> {
   // Construct the module specifier at runtime so tsc doesn't try to resolve
   // the workspace link before dependencies are installed.
   const modPath = '@scp/' + 'providers';
   const mod = await import(/* webpackIgnore: true */ modPath) as {
-    LinkedInAdapter: new () => ProviderPublishAdapter & ProviderAuthAdapter;
+    LinkedInAdapter: new () => FullAdapter;
+    FacebookAdapter: new () => FullAdapter;
+    InstagramAdapter: new () => FullAdapter;
+    XAdapter: new () => FullAdapter;
   };
-  return new mod.LinkedInAdapter();
+
+  switch (provider) {
+    case 'linkedin':
+      return new mod.LinkedInAdapter();
+    case 'facebook':
+      return new mod.FacebookAdapter();
+    case 'instagram':
+      return new mod.InstagramAdapter();
+    case 'x':
+      return new mod.XAdapter();
+    default:
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,14 +79,9 @@ async function executeRequest(req: HttpRequest): Promise<{ ok: boolean; status: 
   return { ok: res.ok, status: res.status, body };
 }
 
-/** Resolve a publish adapter for the given provider string. Only LinkedIn is wired so far. */
+/** Resolve a publish adapter for the given provider string. */
 async function getPublishAdapter(provider: string): Promise<(ProviderPublishAdapter & ProviderAuthAdapter) | null> {
-  switch (provider) {
-    case 'linkedin':
-      return loadLinkedInAdapter();
-    default:
-      return null;
-  }
+  return loadProviderAdapter(provider);
 }
 
 // ---------------------------------------------------------------------------
@@ -84,22 +97,39 @@ async function refreshTokenIfNeeded(
   const connection = await db.socialConnection.findUnique({ where: { id: connectionId } });
   if (!connection) return { error: 'connection_not_found' };
 
-  const token = connection.encryptedToken; // Encryption layer is future work -- read raw for now
-  if (!token) return { error: 'missing_token' };
+  const encToken = connection.encryptedToken;
+  if (!encToken) return { error: 'missing_token' };
+
+  // Decrypt stored token
+  let plainToken: string;
+  try {
+    plainToken = decrypt(encToken);
+  } catch (err) {
+    log.error('token.decrypt_failed', { connectionId, err: err instanceof Error ? err.message : String(err) });
+    return { error: 'token_decrypt_failed' };
+  }
 
   // Check expiry
   if (connection.expiresAt && new Date(connection.expiresAt) < new Date()) {
     log.info('token.expired', { connectionId, expiresAt: connection.expiresAt.toISOString() });
 
-    // Attempt refresh
-    const refreshToken = connection.encryptedRefresh;
-    if (!refreshToken) return { error: 'token_expired' };
+    // Attempt refresh — decrypt the refresh token first
+    const encRefresh = connection.encryptedRefresh;
+    if (!encRefresh) return { error: 'token_expired' };
+
+    let plainRefresh: string;
+    try {
+      plainRefresh = decrypt(encRefresh);
+    } catch (err) {
+      log.error('token.refresh_decrypt_failed', { connectionId, err: err instanceof Error ? err.message : String(err) });
+      return { error: 'token_expired' };
+    }
 
     if (typeof adapter.buildRefreshRequest !== 'function') {
       return { error: 'token_expired' };
     }
 
-    const refreshReq = adapter.buildRefreshRequest({ refreshToken });
+    const refreshReq = adapter.buildRefreshRequest({ refreshToken: plainRefresh });
     let refreshResult: { ok: boolean; status: number; body: unknown };
     try {
       refreshResult = await executeRequest(refreshReq);
@@ -120,7 +150,7 @@ async function refreshTokenIfNeeded(
       return { error: 'token_expired' };
     }
 
-    // Parse refreshed tokens
+    // Parse refreshed tokens and encrypt before storing
     const normalized = adapter.normalizeTokenResponse(refreshResult.body);
 
     const newExpiresAt = typeof normalized.expiresInSeconds === 'number'
@@ -130,8 +160,8 @@ async function refreshTokenIfNeeded(
     await db.socialConnection.update({
       where: { id: connectionId },
       data: {
-        encryptedToken: normalized.accessToken,
-        encryptedRefresh: normalized.refreshToken ?? connection.encryptedRefresh,
+        encryptedToken: encrypt(normalized.accessToken),
+        encryptedRefresh: normalized.refreshToken ? encrypt(normalized.refreshToken) : connection.encryptedRefresh,
         expiresAt: newExpiresAt,
         updatedAt: new Date(),
       },
@@ -141,7 +171,7 @@ async function refreshTokenIfNeeded(
     return { accessToken: normalized.accessToken };
   }
 
-  return { accessToken: token };
+  return { accessToken: plainToken };
 }
 
 // ---------------------------------------------------------------------------

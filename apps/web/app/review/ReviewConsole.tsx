@@ -2,10 +2,14 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { StatusPill, type Tone } from '../_components/ui';
+import { ProviderIcon, IconClock } from '../_components/icons';
+import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { publishDraft, deleteDraft, updateDraft } from '../_lib/api';
+import { detectSlop, groupSlopMatches } from '../_lib/slop';
 import type { DraftRecord, ConnectionRecord } from '../_lib/api';
+import type { SlopResult } from '../_lib/slop';
 
 function connectionLabel(draft: DraftRecord, connections: ConnectionRecord[]): string {
   const conn = connections.find((c) => c.id === draft.connectionId);
@@ -15,19 +19,47 @@ function connectionLabel(draft: DraftRecord, connections: ConnectionRecord[]): s
 
 function providerFor(draft: DraftRecord, connections: ConnectionRecord[]): string {
   const conn = connections.find((c) => c.id === draft.connectionId);
-  return conn?.provider ?? '—';
+  return conn?.provider ?? '?';
 }
 
-function riskTone(draft: DraftRecord): Tone {
-  if (draft.content.length < 100) return 'ok';
-  if (draft.content.length < 500) return 'warn';
+function slopTone(result: SlopResult): Tone {
+  if (result.score === 0) return 'ok';
+  if (result.score <= 20) return 'warn';
   return 'err';
 }
 
-function riskLabel(draft: DraftRecord): string {
-  if (draft.content.length < 100) return 'low';
-  if (draft.content.length < 500) return 'medium';
-  return 'high';
+function SlopPill({ result }: { result: SlopResult }) {
+  const tone = slopTone(result);
+  return (
+    <StatusPill tone={tone}>
+      slop {result.rating}/10
+    </StatusPill>
+  );
+}
+
+function SlopDetail({ result }: { result: SlopResult }) {
+  if (result.matches.length === 0) return null;
+  const groups = groupSlopMatches(result.matches);
+  return (
+    <div className="slopWarning">
+      <div className="slopWarningHeader">AI Slop: {result.rating}/10 — {result.matches.length} {result.matches.length === 1 ? 'flag' : 'flags'}</div>
+      <div className="slopWarningBody">
+        {Array.from(groups.entries()).map(([category, items]) => (
+          <div key={category} className="slopWarningGroup">
+            <span className="slopWarningCategory">{category}</span>
+            <span className="slopWarningItems">
+              {items.map((item, i) => (
+                <code key={i} className="slopWarningMatch">{item}</code>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="slopWarningFooter">
+        Rule-based detection via <a href="https://github.com/hardikpandya/stop-slop" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>stop-slop</a> — no AI used
+      </div>
+    </div>
+  );
 }
 
 export function ReviewConsole() {
@@ -38,6 +70,9 @@ export function ReviewConsole() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
+  const [editMediaIds, setEditMediaIds] = useState<string[]>([]);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState('');
 
   // Only show drafts that need review (status === 'draft')
   const reviewDrafts = useMemo(
@@ -58,14 +93,21 @@ export function ReviewConsole() {
     setActionLoading(true);
     setActionError(null);
     try {
+      // If schedule is set, save it first
+      if (scheduleValue) {
+        await updateDraft(selected.id, { scheduledFor: new Date(scheduleValue).toISOString() });
+      }
       await publishDraft(selected.id);
+      setSelectedId(null);
+      setShowSchedule(false);
+      setScheduleValue('');
       await refetch();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Approve failed');
     } finally {
       setActionLoading(false);
     }
-  }, [selected, refetch]);
+  }, [selected, scheduleValue, refetch]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -88,6 +130,7 @@ export function ReviewConsole() {
     setActionError(null);
     try {
       await publishDraft(selected.id);
+      setSelectedId(null);
       await refetch();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Publish failed');
@@ -99,6 +142,7 @@ export function ReviewConsole() {
   const handleStartEdit = useCallback(() => {
     if (!selected) return;
     setEditContent(selected.content);
+    setEditMediaIds(selected.mediaIds ?? []);
     setEditing(true);
   }, [selected]);
 
@@ -107,7 +151,7 @@ export function ReviewConsole() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await updateDraft(selected.id, { content: editContent });
+      await updateDraft(selected.id, { content: editContent, mediaIds: editMediaIds });
       setEditing(false);
       await refetch();
     } catch (err) {
@@ -115,7 +159,7 @@ export function ReviewConsole() {
     } finally {
       setActionLoading(false);
     }
-  }, [selected, editContent, refetch]);
+  }, [selected, editContent, editMediaIds, refetch]);
 
   if (loading) {
     return <div className="subtle">Loading drafts...</div>;
@@ -126,153 +170,336 @@ export function ReviewConsole() {
   }
 
   if (reviewDrafts.length === 0) {
-    return <div className="subtle">No drafts awaiting review.</div>;
+    return (
+      <div className="emptyState">
+        <p style={{ fontWeight: 600 }}>No drafts awaiting review</p>
+        <p className="subtle" style={{ marginTop: 8 }}>All caught up. Create a new post to get started.</p>
+        <a href="/compose" className="ctaBtn" style={{ marginTop: 16 }}>
+          + Create Post
+        </a>
+      </div>
+    );
   }
 
   if (!selected) return null;
 
+  const provider = providerFor(selected, connections);
+
+  /* ---- Shared inline preview/edit block used by both layouts ---- */
+  function renderPreviewBody(draft: DraftRecord) {
+    const dp = providerFor(draft, connections);
+    return (
+      <>
+        {editing && draft.id === selected.id ? (
+          <div style={{ marginTop: 10 }}>
+            <div className="composeContentWrap">
+              <textarea
+                className="reviewEditArea composeContentArea"
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                rows={Math.max(4, editContent.split('\n').length + 1)}
+              />
+              <MediaToolbar mediaIds={editMediaIds} onChange={setEditMediaIds} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+              <span className="subtle" style={{ fontSize: '0.85rem' }}>{editContent.length} characters</span>
+            </div>
+            <div className="actions" style={{ marginTop: 10 }}>
+              <button type="button" className="btn primary" onClick={handleSaveEdit} disabled={actionLoading}>Save</button>
+              <button type="button" className="btn ghost" onClick={() => setEditing(false)} disabled={actionLoading}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              style={{ marginTop: 10, cursor: 'pointer' }}
+              className="copyBox"
+              onClick={(e) => { e.stopPropagation(); setSelectedId(draft.id); handleStartEdit(); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setSelectedId(draft.id); handleStartEdit(); } }}
+              title="Click to edit"
+            >
+              {draft.content}
+              <div className="subtle" style={{ marginTop: 6, fontSize: '0.82rem' }}>Tap to edit</div>
+            </div>
+            {/* Media thumbnails (read-only when not editing) */}
+            {draft.mediaIds && draft.mediaIds.length > 0 && (
+              <MediaThumbs mediaIds={draft.mediaIds} />
+            )}
+          </>
+        )}
+
+        {/* Schedule */}
+        {showSchedule && draft.id === selected.id ? (
+          <div style={{ marginTop: 10 }}>
+            <div className="formGroup">
+              <label className="formLabel" htmlFor={`sched-${draft.id}`}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <IconClock width={14} height={14} /> Schedule for
+                </span>
+              </label>
+              <input id={`sched-${draft.id}`} type="datetime-local" className="formInput" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} />
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="expandTrigger" style={{ marginTop: 6 }} onClick={(e) => { e.stopPropagation(); setShowSchedule(true); }}>
+            <IconClock width={14} height={14} />
+            {draft.scheduledFor ? `Scheduled: ${new Date(draft.scheduledFor).toLocaleString()}` : 'Add schedule'}
+          </button>
+        )}
+
+        {/* Actions */}
+        {actionError && draft.id === selected.id && (
+          <div style={{ marginTop: 8 }}><StatusPill tone="err">{actionError}</StatusPill></div>
+        )}
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button type="button" className="btn primary" onClick={(e) => { e.stopPropagation(); handleApprove(); }} disabled={actionLoading}>
+            {scheduleValue ? 'Approve & Schedule' : 'Approve'}
+          </button>
+          <button type="button" className="btn ghost" onClick={(e) => { e.stopPropagation(); handlePublishNow(); }} disabled={actionLoading}>
+            Publish now
+          </button>
+          <button type="button" className="btn destructive" onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={actionLoading}>
+            Reject
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
-    <div className="split">
-      <div className="list" aria-label="Drafts">
+    <>
+      {/* ======== Desktop: split layout (list + preview panel) ======== */}
+      <div className="split desktopOnly">
+        <div className="list" aria-label="Drafts">
+          {reviewDrafts.map((d) => {
+            const active = d.id === selected.id;
+            const draftProvider = providerFor(d, connections);
+            return (
+              <div
+                key={d.id}
+                className={active ? 'listItem active' : 'listItem'}
+                role="button"
+                tabIndex={0}
+                onClick={() => { setSelectedId(d.id); setEditing(false); setShowSchedule(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { setSelectedId(d.id); setEditing(false); }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <ProviderIcon provider={draftProvider} size={18} />
+                  <span className="listItemTitle" style={{ marginBottom: 0 }}>
+                    {d.content.slice(0, 50)}{d.content.length > 50 ? '...' : ''}
+                  </span>
+                </div>
+                <div className="listItemMeta">
+                  <span className="subtle">{connectionLabel(d, connections)}</span>
+                  {d.scheduledFor && (
+                    <>
+                      <span>&bull;</span>
+                      <span className="subtle">{new Date(d.scheduledFor).toLocaleDateString()}</span>
+                    </>
+                  )}
+                </div>
+                <div style={{ marginTop: 8 }} className="chips">
+                  <SlopPill result={detectSlop(d.content)} />
+                  <StatusPill tone="neutral">{d.content.length} chars</StatusPill>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="preview" aria-label="Draft preview">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div>
+              <div className="kicker" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ProviderIcon provider={provider} size={16} />
+                Preview
+              </div>
+              <div style={{ fontWeight: 740, fontSize: '1.06rem', marginTop: 8 }}>
+                {selected.content.slice(0, 60)}{selected.content.length > 60 ? '...' : ''}
+              </div>
+              <div className="subtle" style={{ marginTop: 6 }}>
+                {connectionLabel(selected, connections)} &middot;{' '}
+                <span className="mono">{selected.id.slice(0, 12)}</span>
+              </div>
+            </div>
+            <div className="chips">
+              <SlopPill result={detectSlop(selected.content)} />
+              <StatusPill tone="neutral">{selected.publishMode}</StatusPill>
+            </div>
+          </div>
+
+          {/* Slop warnings detail */}
+          <SlopDetail result={detectSlop(selected.content)} />
+
+          {editing ? (
+            <div style={{ marginTop: 14 }}>
+              <div className="composeContentWrap">
+                <textarea
+                  className="reviewEditArea composeContentArea"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={Math.max(5, editContent.split('\n').length + 2)}
+                />
+                <MediaToolbar mediaIds={editMediaIds} onChange={setEditMediaIds} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <span className="subtle" style={{ fontSize: '0.85rem' }}>{editContent.length} characters</span>
+              </div>
+              <div className="actions" style={{ marginTop: 10 }}>
+                <button type="button" className="btn primary" onClick={handleSaveEdit} disabled={actionLoading}>Save</button>
+                <button type="button" className="btn ghost" onClick={() => setEditing(false)} disabled={actionLoading}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{ marginTop: 14, cursor: 'pointer', position: 'relative' }}
+                className="copyBox"
+                onClick={handleStartEdit}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleStartEdit(); }}
+                title="Click to edit"
+              >
+                {selected.content}
+                <div className="subtle" style={{ marginTop: 8, fontSize: '0.82rem' }}>Click to edit</div>
+              </div>
+              {/* Media thumbnails (desktop preview, read-only when not editing) */}
+              {selected.mediaIds && selected.mediaIds.length > 0 && (
+                <MediaThumbs mediaIds={selected.mediaIds} />
+              )}
+            </>
+          )}
+
+          {showSchedule ? (
+            <div style={{ marginTop: 14 }}>
+              <div className="formGroup">
+                <label className="formLabel" htmlFor="reviewSchedule">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <IconClock width={14} height={14} /> Schedule for
+                  </span>
+                </label>
+                <input id="reviewSchedule" type="datetime-local" className="formInput" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} style={{ maxWidth: 300 }} />
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="expandTrigger" style={{ marginTop: 8 }} onClick={() => setShowSchedule(true)}>
+              <IconClock width={14} height={14} />
+              {selected.scheduledFor ? `Scheduled: ${new Date(selected.scheduledFor).toLocaleString()}` : 'Add schedule'}
+            </button>
+          )}
+
+          <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
+            <div>
+              <div className="kicker">Info</div>
+              <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="formLabel" style={{ minWidth: 100 }}>Connection</span>
+                  <span className="subtle">{connectionLabel(selected, connections)}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="formLabel" style={{ minWidth: 100 }}>Provider</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <ProviderIcon provider={provider} size={16} />
+                    <span className="subtle">{provider}</span>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="formLabel" style={{ minWidth: 100 }}>Mode</span>
+                  <span className="subtle">{selected.publishMode}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="formLabel" style={{ minWidth: 100 }}>Length</span>
+                  <span className="subtle">{selected.content.length} chars</span>
+                </div>
+                {selected.scheduledFor && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="formLabel" style={{ minWidth: 100 }}>Scheduled</span>
+                    <span className="subtle">{new Date(selected.scheduledFor).toLocaleString()}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="formLabel" style={{ minWidth: 100 }}>Created</span>
+                  <span className="mono subtle" style={{ fontSize: '0.88rem' }}>{new Date(selected.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="kicker">Actions</div>
+              {actionError && (
+                <div style={{ marginTop: 8 }}>
+                  <StatusPill tone="err">{actionError}</StatusPill>
+                </div>
+              )}
+              <div className="actions" style={{ marginTop: 10 }}>
+                <button type="button" className="btn primary" onClick={handleApprove} disabled={actionLoading}>
+                  {scheduleValue ? 'Approve & Schedule' : 'Approve'}
+                </button>
+                <button type="button" className="btn" onClick={handleStartEdit} disabled={actionLoading || editing}>
+                  Edit
+                </button>
+                <button type="button" className="btn ghost" onClick={handlePublishNow} disabled={actionLoading}>
+                  Publish now
+                </button>
+                <button type="button" className="btn destructive" onClick={handleDelete} disabled={actionLoading}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ======== Mobile: accordion cards ======== */}
+      <div className="mobileOnly" style={{ gap: 12 }}>
         {reviewDrafts.map((d) => {
           const active = d.id === selected.id;
+          const draftProvider = providerFor(d, connections);
           return (
             <div
               key={d.id}
               className={active ? 'listItem active' : 'listItem'}
               role="button"
               tabIndex={0}
-              onClick={() => setSelectedId(d.id)}
+              onClick={() => {
+                if (active) { setSelectedId(null); setEditing(false); setShowSchedule(false); }
+                else { setSelectedId(d.id); setEditing(false); setShowSchedule(false); }
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') setSelectedId(d.id);
+                if (e.key === 'Enter' || e.key === ' ') {
+                  if (active) setSelectedId(null); else { setSelectedId(d.id); setEditing(false); }
+                }
               }}
             >
-              <div className="listItemTitle">{d.content.slice(0, 60)}{d.content.length > 60 ? '...' : ''}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <ProviderIcon provider={draftProvider} size={18} />
+                <span style={{ fontWeight: 680, flex: 1, minWidth: 0 }}>
+                  {d.content.slice(0, 50)}{d.content.length > 50 ? '...' : ''}
+                </span>
+              </div>
               <div className="listItemMeta">
-                <span className="mono">{d.id.slice(0, 12)}</span>
-                <span>&bull;</span>
                 <span className="subtle">{connectionLabel(d, connections)}</span>
               </div>
-              <div style={{ marginTop: 10 }} className="chips">
-                <StatusPill tone={riskTone(d)}>{riskLabel(d)} risk</StatusPill>
-                <StatusPill tone="neutral">{providerFor(d, connections)}</StatusPill>
-                {d.scheduledFor && <StatusPill tone="neutral">{d.scheduledFor}</StatusPill>}
+              <div style={{ marginTop: 6 }} className="chips">
+                <SlopPill result={detectSlop(d.content)} />
+                <StatusPill tone="neutral">{d.content.length} chars</StatusPill>
               </div>
+
+              {/* Inline expanded preview when this card is active */}
+              {active && (
+                <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                  {renderPreviewBody(d)}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      <div className="preview" aria-label="Draft preview">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <div className="kicker">Preview</div>
-            <div style={{ fontWeight: 740, fontSize: '1.06rem', marginTop: 8 }}>
-              {selected.content.slice(0, 60)}{selected.content.length > 60 ? '...' : ''}
-            </div>
-            <div className="subtle" style={{ marginTop: 6 }}>
-              {connectionLabel(selected, connections)} &middot; <span className="mono">{selected.id.slice(0, 12)}</span>
-            </div>
-          </div>
-          <div className="chips">
-            <StatusPill tone={riskTone(selected)}>{riskLabel(selected)} risk</StatusPill>
-            <StatusPill tone="neutral">{selected.publishMode}</StatusPill>
-          </div>
-        </div>
-
-        {editing ? (
-          <div style={{ marginTop: 14 }}>
-            <textarea
-              className="copyBox"
-              style={{ width: '100%', minHeight: 120, fontFamily: 'inherit', fontSize: 'inherit', padding: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'inherit', resize: 'vertical' }}
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-            />
-            <div className="actions" style={{ marginTop: 10 }}>
-              <button type="button" className="btn primary" onClick={handleSaveEdit} disabled={actionLoading}>
-                Save
-              </button>
-              <button type="button" className="btn ghost" onClick={() => setEditing(false)} disabled={actionLoading}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 14 }} className="copyBox">
-            {selected.content}
-          </div>
-        )}
-
-        <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
-          <div>
-            <div className="kicker">Info</div>
-            <div className="tableWrap" style={{ marginTop: 10 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Field</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Connection</td>
-                    <td className="subtle">{connectionLabel(selected, connections)}</td>
-                  </tr>
-                  <tr>
-                    <td>Provider</td>
-                    <td className="subtle">{providerFor(selected, connections)}</td>
-                  </tr>
-                  <tr>
-                    <td>Mode</td>
-                    <td className="subtle">{selected.publishMode}</td>
-                  </tr>
-                  <tr>
-                    <td>Length</td>
-                    <td className="subtle">{selected.content.length} chars</td>
-                  </tr>
-                  {selected.scheduledFor && (
-                    <tr>
-                      <td>Scheduled for</td>
-                      <td className="subtle">{selected.scheduledFor}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td>Created</td>
-                    <td className="mono subtle">{selected.createdAt}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <div className="kicker">Actions</div>
-            {actionError && (
-              <div style={{ marginTop: 8 }}>
-                <StatusPill tone="err">{actionError}</StatusPill>
-              </div>
-            )}
-            <div className="actions" style={{ marginTop: 10 }}>
-              <button type="button" className="btn primary" onClick={handleApprove} disabled={actionLoading}>
-                Approve
-              </button>
-              <button type="button" className="btn" onClick={handleStartEdit} disabled={actionLoading || editing}>
-                Request changes
-              </button>
-              <button type="button" className="btn ghost" onClick={handleDelete} disabled={actionLoading}>
-                Reject
-              </button>
-              <button type="button" className="btn ghost" onClick={handlePublishNow} disabled={actionLoading}>
-                Publish now
-              </button>
-            </div>
-            <div className="subtle" style={{ marginTop: 10 }}>
-              Actions will write receipts: who approved, what changed, what shipped.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

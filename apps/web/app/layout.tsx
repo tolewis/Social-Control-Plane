@@ -2,15 +2,23 @@ import './globals.css';
 import type { ReactNode } from 'react';
 import { AppNav } from './_components/AppNav';
 import { TopBar } from './_components/TopBar';
+import { MobileFab } from './_components/MobileFab';
 
 export const metadata = {
-  title: 'Social Control Plane',
+  title: 'Social Plane',
   description: 'Social publishing console.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('sp-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body>
         <div className="appShell">
           <aside className="sidebar" aria-label="Sidebar">
@@ -18,7 +26,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <div className="brand">
                 <div className="brandMark" aria-hidden>&#9678;</div>
                 <div className="brandText">
-                  <div className="brandName">Social Control Plane</div>
+                  <div className="brandName">Social Plane</div>
                 </div>
               </div>
 
@@ -33,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main className="page" aria-label="Content">
               {children}
             </main>
+            <MobileFab />
             <AppNav variant="mobile" />
           </div>
         </div>

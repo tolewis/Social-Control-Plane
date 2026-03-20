@@ -1,6 +1,12 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+import { createWriteStream, existsSync, unlinkSync } from 'node:fs';
+import { join, extname, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import {
   createAuthAdapter,
   LinkedInAdapter,
@@ -16,15 +22,25 @@ import type {
 import { isProviderId, NotImplementedError, PROVIDERS } from '@scp/shared';
 import { prisma } from './db.js';
 import { publishQueue } from './queue.js';
+import { encrypt, decrypt } from './crypto.js';
+import { detectSlop, groupSlopMatches } from './slop.js';
 
 // Prisma model types for map callback annotations.
 // Defined locally to avoid version-mismatch issues with the generated client.
 type SocialConnectionRow = { id: string; provider: string; displayName: string; accountRef: string; status: string; createdAt: Date; updatedAt: Date };
-type DraftRow = { id: string; connectionId: string; publishMode: string; content: string; title: string | null; scheduledFor: Date | null; status: string; createdAt: Date; updatedAt: Date };
+type DraftRow = { id: string; connectionId: string; publishMode: string; content: string; title: string | null; mediaJson: unknown; scheduledFor: Date | null; status: string; createdAt: Date; updatedAt: Date };
 type PublishJobRow = { id: string; draftId: string; connectionId: string; status: string; idempotencyKey: string; receiptJson: unknown; errorMessage: string | null; createdAt: Date; updatedAt: Date };
+
+const UPLOADS_DIR = resolve(join(import.meta.dirname ?? '.', '../../../uploads'));
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
+await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } }); // 20 MB
+await app.register(fastifyStatic, {
+  root: UPLOADS_DIR,
+  prefix: '/uploads/',
+  decorateReply: false,
+});
 
 // ---------------------------------------------------------------------------
 // Auth sessions stay in-memory — they're short-lived, pre-login state.
@@ -65,6 +81,72 @@ const safeAdapterName = (provider: ProviderId): string => {
       return provider;
   }
 };
+
+// ---------------------------------------------------------------------------
+// Audit helper
+// ---------------------------------------------------------------------------
+async function audit(entityType: string, entityId: string, action: string, payload?: unknown) {
+  await prisma.auditEvent.create({
+    data: { entityType, entityId, action, payload: payload ?? undefined },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Identity fetch helpers (best-effort, provider-specific)
+// ---------------------------------------------------------------------------
+async function fetchLinkedInIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
+  const res = await fetch('https://api.linkedin.com/v2/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`linkedin_userinfo_failed:${res.status}`);
+  const data = (await res.json()) as { sub?: string; name?: string; email?: string };
+  return {
+    displayName: data.name || data.email || 'LinkedIn User',
+    accountRef: data.sub || '',
+  };
+}
+
+async function fetchFacebookIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string; pageAccessToken?: string }> {
+  const meRes = await fetch(`https://graph.facebook.com/v20.0/me?fields=id,name&access_token=${accessToken}`);
+  if (!meRes.ok) throw new Error(`facebook_me_failed:${meRes.status}`);
+  const me = (await meRes.json()) as { id?: string; name?: string };
+
+  const pagesRes = await fetch(`https://graph.facebook.com/v20.0/me/accounts?access_token=${accessToken}`);
+  if (!pagesRes.ok) throw new Error(`facebook_pages_failed:${pagesRes.status}`);
+  const pagesData = (await pagesRes.json()) as { data?: Array<{ id: string; name?: string; access_token?: string }> };
+  const pages = pagesData.data ?? [];
+
+  return {
+    displayName: me.name || 'Facebook User',
+    accountRef: pages[0]?.id || me.id || '',
+    pageAccessToken: pages[0]?.access_token,
+  };
+}
+
+async function fetchInstagramIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
+  const res = await fetch(`https://graph.facebook.com/v20.0/me/accounts?fields=instagram_business_account,name&access_token=${accessToken}`);
+  if (!res.ok) throw new Error(`instagram_pages_failed:${res.status}`);
+  const data = (await res.json()) as { data?: Array<{ id: string; name?: string; instagram_business_account?: { id: string } }> };
+  const pages = data.data ?? [];
+  const igPage = pages.find((p) => p.instagram_business_account);
+
+  return {
+    displayName: igPage ? `${igPage.name || 'Page'} (Instagram)` : 'Instagram User',
+    accountRef: igPage?.instagram_business_account?.id || '',
+  };
+}
+
+async function fetchXIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
+  const res = await fetch('https://api.twitter.com/2/users/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`x_users_me_failed:${res.status}`);
+  const json = (await res.json()) as { data?: { id?: string; username?: string } };
+  return {
+    displayName: json.data?.username ? `@${json.data.username}` : 'X User',
+    accountRef: json.data?.id || '',
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Health
@@ -180,13 +262,54 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
       ? new Date(Date.now() + tokens.expiresInSeconds * 1000)
       : undefined;
 
+  // --- Identity fetch (best-effort) ---
+  let displayName: string = params.provider;
+  let accountRef = '';
+  let pageAccessToken: string | undefined;
+  try {
+    switch (params.provider) {
+      case 'linkedin': {
+        const identity = await fetchLinkedInIdentity(tokens.accessToken);
+        displayName = identity.displayName;
+        accountRef = identity.accountRef;
+        break;
+      }
+      case 'facebook': {
+        const identity = await fetchFacebookIdentity(tokens.accessToken);
+        displayName = identity.displayName;
+        accountRef = identity.accountRef;
+        pageAccessToken = identity.pageAccessToken;
+        break;
+      }
+      case 'instagram': {
+        const identity = await fetchInstagramIdentity(tokens.accessToken);
+        displayName = identity.displayName;
+        accountRef = identity.accountRef;
+        break;
+      }
+      case 'x': {
+        const identity = await fetchXIdentity(tokens.accessToken);
+        displayName = identity.displayName;
+        accountRef = identity.accountRef;
+        break;
+      }
+    }
+  } catch (identityErr) {
+    app.log.error(identityErr, `identity_fetch_failed:${params.provider}`);
+  }
+
+  // --- Encrypt tokens before storage ---
+  const tokenToStore = pageAccessToken ?? tokens.accessToken;
+  const encryptedToken = encrypt(tokenToStore);
+  const encryptedRefresh = tokens.refreshToken ? encrypt(tokens.refreshToken) : null;
+
   const connection = await prisma.socialConnection.create({
     data: {
       provider: params.provider,
-      displayName: '',
-      accountRef: '',
-      encryptedToken: tokens.accessToken,
-      encryptedRefresh: tokens.refreshToken ?? null,
+      displayName,
+      accountRef,
+      encryptedToken,
+      encryptedRefresh,
       scopes: tokens.scope ? tokens.scope.split(/[\s,]+/) : [],
       expiresAt,
       status: 'connected',
@@ -195,11 +318,15 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
 
   authSessions.delete(body.state);
 
+  await audit('connection', connection.id, 'oauth_connected', { provider: params.provider });
+
   return {
     performed: true,
     connection: {
       id: connection.id,
       provider: connection.provider,
+      displayName: connection.displayName,
+      accountRef: connection.accountRef,
       status: connection.status,
       createdAt: connection.createdAt.toISOString(),
       updatedAt: connection.updatedAt.toISOString(),
@@ -273,13 +400,15 @@ app.post('/connections', async (request, reply) => {
       provider: body.provider,
       displayName: body.displayName ?? '',
       accountRef: body.accountRef ?? '',
-      encryptedToken: body.accessToken,
-      encryptedRefresh: body.refreshToken ?? null,
+      encryptedToken: encrypt(body.accessToken),
+      encryptedRefresh: body.refreshToken ? encrypt(body.refreshToken) : null,
       scopes: [],
       expiresAt: body.expiresAtIso ? new Date(body.expiresAtIso) : null,
       status: 'connected',
     },
   });
+
+  await audit('connection', connection.id, 'created', { provider: body.provider });
 
   reply.code(201);
   return {
@@ -306,29 +435,42 @@ app.delete('/connections/:id', async (request, reply) => {
     throw err;
   }
 
+  await audit('connection', params.id, 'deleted');
+
   return { deleted: true };
 });
 
 // ---------------------------------------------------------------------------
 // Drafts — full CRUD
 // ---------------------------------------------------------------------------
+function draftToJson(d: DraftRow) {
+  const slop = detectSlop(d.content);
+  return {
+    id: d.id,
+    connectionId: d.connectionId,
+    publishMode: d.publishMode.toLowerCase(),
+    content: d.content,
+    title: d.title,
+    mediaIds: Array.isArray(d.mediaJson) ? d.mediaJson : [],
+    scheduledFor: d.scheduledFor?.toISOString() ?? undefined,
+    status: d.status,
+    slop: {
+      score: slop.score,
+      rating: slop.rating,
+      label: slop.label,
+      flagCount: slop.flagCount,
+      groups: groupSlopMatches(slop.matches),
+    },
+    createdAt: d.createdAt.toISOString(),
+    updatedAt: d.updatedAt.toISOString(),
+  };
+}
+
 app.get('/drafts', async () => {
   const drafts = await prisma.draft.findMany({
     orderBy: { createdAt: 'desc' },
   });
-  return {
-    drafts: drafts.map((d: DraftRow) => ({
-      id: d.id,
-      connectionId: d.connectionId,
-      publishMode: d.publishMode.toLowerCase(),
-      content: d.content,
-      title: d.title,
-      scheduledFor: d.scheduledFor?.toISOString() ?? undefined,
-      status: d.status,
-      createdAt: d.createdAt.toISOString(),
-      updatedAt: d.updatedAt.toISOString(),
-    })),
-  };
+  return { drafts: drafts.map((d: DraftRow) => draftToJson(d)) };
 });
 
 app.get('/drafts/:id', async (request, reply) => {
@@ -337,19 +479,7 @@ app.get('/drafts/:id', async (request, reply) => {
   const draft = await prisma.draft.findUnique({ where: { id: params.id } });
   if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
 
-  return {
-    draft: {
-      id: draft.id,
-      connectionId: draft.connectionId,
-      publishMode: draft.publishMode.toLowerCase(),
-      content: draft.content,
-      title: draft.title,
-      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
-      status: draft.status,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
-    },
-  };
+  return { draft: draftToJson(draft as DraftRow) };
 });
 
 app.post('/drafts', async (request, reply) => {
@@ -359,6 +489,7 @@ app.post('/drafts', async (request, reply) => {
       publishMode: z.enum(['draft', 'direct']),
       content: z.string().min(1),
       title: z.string().optional(),
+      mediaIds: z.array(z.string()).optional(),
       scheduledFor: z.string().datetime().optional(),
     })
     .parse(request.body);
@@ -375,25 +506,16 @@ app.post('/drafts', async (request, reply) => {
       publishMode: body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT',
       content: body.content,
       title: body.title ?? null,
+      mediaJson: body.mediaIds ?? [],
       scheduledFor: body.scheduledFor ? new Date(body.scheduledFor) : null,
       status: body.publishMode === 'draft' ? 'draft' : 'queued',
     },
   });
 
+  await audit('draft', draft.id, 'created', { connectionId: body.connectionId, publishMode: body.publishMode });
+
   reply.code(201);
-  return {
-    draft: {
-      id: draft.id,
-      connectionId: draft.connectionId,
-      publishMode: draft.publishMode.toLowerCase(),
-      content: draft.content,
-      title: draft.title,
-      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
-      status: draft.status,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
-    },
-  };
+  return { draft: draftToJson(draft as DraftRow) };
 });
 
 app.put('/drafts/:id', async (request, reply) => {
@@ -402,6 +524,7 @@ app.put('/drafts/:id', async (request, reply) => {
     .object({
       content: z.string().min(1).optional(),
       title: z.string().optional(),
+      mediaIds: z.array(z.string()).optional(),
       scheduledFor: z.string().datetime().nullable().optional(),
       publishMode: z.enum(['draft', 'direct']).optional(),
     })
@@ -413,6 +536,7 @@ app.put('/drafts/:id', async (request, reply) => {
   const data: Record<string, unknown> = {};
   if (body.content !== undefined) data.content = body.content;
   if (body.title !== undefined) data.title = body.title;
+  if (body.mediaIds !== undefined) data.mediaJson = body.mediaIds;
   if (body.scheduledFor !== undefined) {
     data.scheduledFor = body.scheduledFor ? new Date(body.scheduledFor) : null;
   }
@@ -425,19 +549,9 @@ app.put('/drafts/:id', async (request, reply) => {
     data,
   });
 
-  return {
-    draft: {
-      id: draft.id,
-      connectionId: draft.connectionId,
-      publishMode: draft.publishMode.toLowerCase(),
-      content: draft.content,
-      title: draft.title,
-      scheduledFor: draft.scheduledFor?.toISOString() ?? undefined,
-      status: draft.status,
-      createdAt: draft.createdAt.toISOString(),
-      updatedAt: draft.updatedAt.toISOString(),
-    },
-  };
+  await audit('draft', draft.id, 'updated', { fields: Object.keys(body) });
+
+  return { draft: draftToJson(draft as DraftRow) };
 });
 
 app.delete('/drafts/:id', async (request, reply) => {
@@ -450,6 +564,8 @@ app.delete('/drafts/:id', async (request, reply) => {
     if (code === 'P2025') return reply.code(404).send({ error: 'draft_not_found' });
     throw err;
   }
+
+  await audit('draft', params.id, 'deleted');
 
   return { deleted: true };
 });
@@ -514,6 +630,11 @@ app.post('/publish/:draftId', async (request, reply) => {
     where: { id: draft.connectionId },
   });
 
+  // Calculate scheduled delay (if draft has a future scheduledFor).
+  const scheduledDelay = draft.scheduledFor
+    ? Math.max(0, new Date(draft.scheduledFor).getTime() - Date.now())
+    : 0;
+
   // Enqueue BullMQ job — job name must be 'draft.publish' to match worker handler map.
   await publishQueue.add(
     'draft.publish',
@@ -529,6 +650,7 @@ app.post('/publish/:draftId', async (request, reply) => {
       jobId: job.id,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 },
+      delay: scheduledDelay,
     },
   );
 
@@ -567,6 +689,8 @@ app.post('/publish/:draftId', async (request, reply) => {
       responseJson: responsePayload,
     },
   });
+
+  await audit('job', job.id, 'enqueued', { draftId: draft.id, connectionId: draft.connectionId });
 
   return responsePayload;
 });
@@ -630,10 +754,18 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
     });
   }
 
+  // Decrypt token for use
+  let decryptedToken: string;
+  try {
+    decryptedToken = decrypt(connection.encryptedToken);
+  } catch {
+    return reply.code(400).send({ error: 'token_decryption_failed' });
+  }
+
   let publishReq: HttpRequest;
   try {
     publishReq = publishAdapter.buildPublishRequest({
-      accessToken: connection.encryptedToken,
+      accessToken: decryptedToken,
       accountRef: connection.accountRef,
       text: draft.content,
       idempotencyKey: job.idempotencyKey,
@@ -697,6 +829,136 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
   });
 
   return { performed: true, job: { id: job.id, status: 'SUCCEEDED' }, receipt: raw };
+});
+
+// ---------------------------------------------------------------------------
+// Audit events — read-only listing
+// ---------------------------------------------------------------------------
+app.get('/audit', async (request) => {
+  const query = z.object({ limit: z.coerce.number().optional() }).parse(request.query);
+  const events = await prisma.auditEvent.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: query.limit || 50,
+  });
+  return { events };
+});
+
+// ---------------------------------------------------------------------------
+// Media — upload, list, delete
+// ---------------------------------------------------------------------------
+const ALLOWED_MIME = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif',
+  'video/mp4', 'video/quicktime',
+]);
+
+app.post('/media/upload', async (request, reply) => {
+  const file = await request.file();
+  if (!file) return reply.code(400).send({ error: 'no_file' });
+
+  if (!ALLOWED_MIME.has(file.mimetype)) {
+    return reply.code(400).send({ error: 'unsupported_mime_type', mime: file.mimetype });
+  }
+
+  const ext = extname(file.filename) || '.bin';
+  const storedName = `${randomUUID()}${ext}`;
+  const storagePath = join(UPLOADS_DIR, storedName);
+
+  await pipeline(file.file, createWriteStream(storagePath));
+
+  // Check if the file was truncated (exceeded size limit)
+  if (file.file.truncated) {
+    unlinkSync(storagePath);
+    return reply.code(413).send({ error: 'file_too_large', maxBytes: 20 * 1024 * 1024 });
+  }
+
+  const stats = await import('node:fs/promises').then(fs => fs.stat(storagePath));
+
+  const media = await prisma.media.create({
+    data: {
+      filename: storedName,
+      originalName: file.filename,
+      mimeType: file.mimetype,
+      sizeBytes: stats.size,
+      storagePath,
+    },
+  });
+
+  await audit('media', media.id, 'uploaded', { originalName: file.filename, mimeType: file.mimetype, sizeBytes: stats.size });
+
+  reply.code(201);
+  return {
+    media: {
+      id: media.id,
+      filename: media.filename,
+      originalName: media.originalName,
+      mimeType: media.mimeType,
+      sizeBytes: media.sizeBytes,
+      url: `/uploads/${media.filename}`,
+      createdAt: media.createdAt.toISOString(),
+    },
+  };
+});
+
+app.get('/media', async () => {
+  const items = await prisma.media.findMany({ orderBy: { createdAt: 'desc' } });
+  return {
+    media: items.map((m) => ({
+      id: m.id,
+      filename: m.filename,
+      originalName: m.originalName,
+      mimeType: m.mimeType,
+      sizeBytes: m.sizeBytes,
+      url: `/uploads/${m.filename}`,
+      alt: m.alt,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  };
+});
+
+app.get('/media/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const media = await prisma.media.findUnique({ where: { id: params.id } });
+  if (!media) return reply.code(404).send({ error: 'media_not_found' });
+
+  return {
+    media: {
+      id: media.id,
+      filename: media.filename,
+      originalName: media.originalName,
+      mimeType: media.mimeType,
+      sizeBytes: media.sizeBytes,
+      url: `/uploads/${media.filename}`,
+      alt: media.alt,
+      createdAt: media.createdAt.toISOString(),
+    },
+  };
+});
+
+app.delete('/media/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const media = await prisma.media.findUnique({ where: { id: params.id } });
+  if (!media) return reply.code(404).send({ error: 'media_not_found' });
+
+  // Delete file from disk
+  try { if (existsSync(media.storagePath)) unlinkSync(media.storagePath); } catch { /* best effort */ }
+
+  await prisma.media.delete({ where: { id: params.id } });
+  await audit('media', params.id, 'deleted');
+
+  return { deleted: true };
+});
+
+// ---------------------------------------------------------------------------
+// Slop detection — rule-based AI writing detector (no AI used)
+// ---------------------------------------------------------------------------
+app.post('/slop/check', async (request) => {
+  const body = z.object({ text: z.string().min(1) }).parse(request.body);
+  const result = detectSlop(body.text);
+  return {
+    ...result,
+    groups: groupSlopMatches(result.matches),
+    source: 'stop-slop (rule-based, no AI)',
+  };
 });
 
 // ---------------------------------------------------------------------------

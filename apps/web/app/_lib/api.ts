@@ -1,11 +1,15 @@
 /**
- * API client for Social Control Plane Fastify backend.
+ * API client for Social Plane Fastify backend.
  *
  * Base URL reads from NEXT_PUBLIC_API_URL env var; defaults to http://localhost:4001.
  * All functions throw on non-2xx responses.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+const API_PORT = '4001';
+
+function base(): string {
+  return `http://${document.location.hostname}:${API_PORT}`;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Types — mirrors @scp/shared where possible                        */
@@ -23,8 +27,20 @@ export interface ConnectionRecord {
   displayName?: string;
   accountRef?: string;
   status: ConnectionStatus;
+  expiresAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MediaRecord {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
+  alt?: string;
+  createdAt: string;
 }
 
 export interface DraftRecord {
@@ -32,6 +48,7 @@ export interface DraftRecord {
   connectionId: string;
   publishMode: PublishMode;
   content: string;
+  mediaIds?: string[];
   scheduledFor?: string;
   status: DraftStatus;
   createdAt: string;
@@ -55,13 +72,15 @@ export interface PublishJobRecord {
 /* ------------------------------------------------------------------ */
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${BASE}${path}`;
+  const url = `${base()}${path}`;
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string> ?? {}) };
+  // Only set Content-Type for requests that carry a body
+  if (init?.body) {
+    headers['Content-Type'] ??= 'application/json';
+  }
   const res = await fetch(url, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -126,6 +145,7 @@ export function createDraft(data: {
   connectionId: string;
   publishMode: PublishMode;
   content: string;
+  mediaIds?: string[];
   scheduledFor?: string;
 }) {
   return apiFetch<{ draft: DraftRecord }>('/drafts', {
@@ -134,7 +154,7 @@ export function createDraft(data: {
   });
 }
 
-export function updateDraft(id: string, data: Partial<Pick<DraftRecord, 'content' | 'scheduledFor' | 'publishMode'>>) {
+export function updateDraft(id: string, data: Partial<Pick<DraftRecord, 'content' | 'scheduledFor' | 'publishMode' | 'mediaIds'>>) {
   return apiFetch<{ draft: DraftRecord }>(`/drafts/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -182,4 +202,30 @@ export function exchangeToken(provider: ProviderId, code: string, state: string)
       body: JSON.stringify({ code, state, perform: true }),
     },
   );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Media                                                              */
+/* ------------------------------------------------------------------ */
+
+export async function uploadMedia(file: File): Promise<{ media: MediaRecord }> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const url = `${base()}/media/upload`;
+  const res = await fetch(url, { method: 'POST', body: form });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`API ${res.status}: /media/upload — ${body}`);
+  }
+  return res.json();
+}
+
+export function fetchMedia() {
+  return apiFetch<{ media: MediaRecord[] }>('/media');
+}
+
+export function deleteMedia(id: string) {
+  return apiFetch<void>(`/media/${id}`, { method: 'DELETE' });
 }
