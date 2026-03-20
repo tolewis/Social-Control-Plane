@@ -61,7 +61,7 @@ export default function ComposePage() {
         publishMode,
         content: title ? `${title}\n\n${content}` : content,
         mediaIds: mediaIds.length > 0 ? mediaIds : undefined,
-        scheduledFor: scheduledFor || undefined,
+        scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
       });
       if (publishMode === 'draft') {
         router.push('/review');

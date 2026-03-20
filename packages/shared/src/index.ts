@@ -71,6 +71,8 @@ export interface OAuthAuthorizeParams {
 export interface OAuthTokenExchangeParams {
   code: string;
   redirectUri: string;
+  /** Original state value — needed by X for PKCE code_verifier derivation. */
+  state?: string;
 }
 
 export interface OAuthTokenResponse {

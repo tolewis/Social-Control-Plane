@@ -165,6 +165,19 @@ export function deleteDraft(id: string) {
   return apiFetch<void>(`/drafts/${id}`, { method: 'DELETE' });
 }
 
+export function rescheduleDraft(id: string, scheduledFor: string) {
+  return apiFetch<{ draft: DraftRecord; rescheduledJob: boolean }>(`/drafts/${id}/reschedule`, {
+    method: 'POST',
+    body: JSON.stringify({ scheduledFor }),
+  });
+}
+
+export function revertToDraft(id: string) {
+  return apiFetch<{ draft: DraftRecord }>(`/drafts/${id}/back-to-draft`, {
+    method: 'POST',
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Publish                                                           */
 /* ------------------------------------------------------------------ */

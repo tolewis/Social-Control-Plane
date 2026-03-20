@@ -2,12 +2,12 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { StatusPill } from '../_components/ui';
-import { ProviderIcon, IconRetry, IconTrash } from '../_components/icons';
-import { MediaThumbs } from '../_components/MediaPicker';
+import { ProviderIcon, IconRetry, IconTrash, IconSend, IconEdit, IconClock, IconRefresh } from '../_components/icons';
+import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
-import { publishDraft, deleteDraft } from '../_lib/api';
+import { publishDraft, deleteDraft, updateDraft, rescheduleDraft, revertToDraft } from '../_lib/api';
 import type { DraftRecord, PublishJobRecord, ConnectionRecord } from '../_lib/api';
 
 type QueueStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'needs review';
@@ -56,6 +56,12 @@ export default function QueuePage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editMediaIds, setEditMediaIds] = useState<string[]>([]);
+  const [editSchedule, setEditSchedule] = useState('');
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [rescheduleValue, setRescheduleValue] = useState('');
 
   const loading = draftLoading || connLoading || jobLoading;
 
@@ -108,6 +114,92 @@ export default function QueuePage() {
       setExpandedId(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Cancel failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [refetchDrafts, refetchJobs]);
+
+  const handlePublishNow = useCallback(async (draftId: string) => {
+    setActionLoading(draftId);
+    setActionError(null);
+    try {
+      await publishDraft(draftId);
+      await Promise.all([refetchDrafts(), refetchJobs()]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Publish failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [refetchDrafts, refetchJobs]);
+
+  const handleStartEdit = useCallback((item: QueueItem) => {
+    setEditingId(item.fullId);
+    setEditContent(item.fullContent);
+    setEditMediaIds(item.mediaIds);
+    // Convert ISO to datetime-local format for the input
+    if (item.scheduledFor) {
+      const d = new Date(item.scheduledFor);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setEditSchedule(local);
+    } else {
+      setEditSchedule('');
+    }
+  }, []);
+
+  const handleSaveEdit = useCallback(async (draftId: string) => {
+    setActionLoading(draftId);
+    setActionError(null);
+    try {
+      await updateDraft(draftId, {
+        content: editContent,
+        mediaIds: editMediaIds,
+      });
+      setEditingId(null);
+      await refetchDrafts();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [editContent, editMediaIds, editSchedule, refetchDrafts]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+  }, []);
+
+  const handleStartReschedule = useCallback((item: QueueItem) => {
+    setReschedulingId(item.fullId);
+    if (item.scheduledFor) {
+      const d = new Date(item.scheduledFor);
+      setRescheduleValue(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+    } else {
+      setRescheduleValue('');
+    }
+  }, []);
+
+  const handleSaveReschedule = useCallback(async (draftId: string) => {
+    if (!rescheduleValue) return;
+    setActionLoading(draftId);
+    setActionError(null);
+    try {
+      await rescheduleDraft(draftId, new Date(rescheduleValue).toISOString());
+      setReschedulingId(null);
+      await Promise.all([refetchDrafts(), refetchJobs()]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Reschedule failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [rescheduleValue, refetchDrafts, refetchJobs]);
+
+  const handleBackToDraft = useCallback(async (draftId: string) => {
+    setActionLoading(draftId);
+    setActionError(null);
+    try {
+      await revertToDraft(draftId);
+      await Promise.all([refetchDrafts(), refetchJobs()]);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Revert failed');
     } finally {
       setActionLoading(null);
     }
@@ -190,67 +282,104 @@ export default function QueuePage() {
                         <tr className="queueDetailRow">
                           <td colSpan={5}>
                             <div className="queueDetail">
-                              <div>
-                                <div className="formLabel" style={{ marginBottom: 6 }}>Full content</div>
-                                <div className="copyBox">{item.fullContent}</div>
-                                {item.mediaIds.length > 0 && <MediaThumbs mediaIds={item.mediaIds} />}
-                              </div>
+                              {editingId === item.fullId ? (
+                                /* ---- Edit mode ---- */
+                                <>
+                                  <div>
+                                    <div className="formLabel" style={{ marginBottom: 6 }}>Content</div>
+                                    <textarea
+                                      className="formTextarea"
+                                      value={editContent}
+                                      onChange={(e) => setEditContent(e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ minHeight: 100 }}
+                                    />
+                                    <MediaToolbar mediaIds={editMediaIds} onChange={setEditMediaIds} />
+                                  </div>
+                                  <div className="queueDetailActions">
+                                    <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !editContent.trim()} onClick={(e) => { e.stopPropagation(); handleSaveEdit(item.draftId); }}>Save</button>
+                                    <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); handleCancelEdit(); }}>Cancel</button>
+                                  </div>
+                                </>
+                              ) : reschedulingId === item.fullId ? (
+                                /* ---- Reschedule mode ---- */
+                                <>
+                                  <div>
+                                    <div className="formLabel" style={{ marginBottom: 6 }}>New date & time</div>
+                                    <input
+                                      type="datetime-local"
+                                      className="formInput"
+                                      value={rescheduleValue}
+                                      onChange={(e) => setRescheduleValue(e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                  <div className="queueDetailActions">
+                                    <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !rescheduleValue} onClick={(e) => { e.stopPropagation(); handleSaveReschedule(item.draftId); }}>Save Schedule</button>
+                                    <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); setReschedulingId(null); }}>Cancel</button>
+                                  </div>
+                                </>
+                              ) : (
+                                /* ---- Read mode ---- */
+                                <>
+                                  <div>
+                                    <div className="formLabel" style={{ marginBottom: 6 }}>Full content</div>
+                                    <div className="copyBox">{item.fullContent}</div>
+                                    {item.mediaIds.length > 0 && <MediaThumbs mediaIds={item.mediaIds} />}
+                                  </div>
 
-                              {item.scheduledFor && (
-                                <div>
-                                  <span className="formLabel">Scheduled for: </span>
-                                  <span className="mono subtle">{new Date(item.scheduledFor).toLocaleString()}</span>
-                                </div>
+                                  {item.scheduledFor && (
+                                    <div>
+                                      <span className="formLabel">Scheduled for: </span>
+                                      <span className="mono subtle">{new Date(item.scheduledFor).toLocaleString()}</span>
+                                    </div>
+                                  )}
+
+                                  <div>
+                                    <span className="formLabel">Created: </span>
+                                    <span className="mono subtle">{new Date(item.createdAt).toLocaleString()}</span>
+                                  </div>
+
+                                  {item.errorMessage && (
+                                    <div>
+                                      <div className="formLabel" style={{ marginBottom: 4 }}>Error</div>
+                                      <div className="receiptBox" style={{ color: 'var(--err)' }}>{item.errorMessage}</div>
+                                    </div>
+                                  )}
+
+                                  {item.receiptJson != null && (
+                                    <div>
+                                      <div className="formLabel" style={{ marginBottom: 4 }}>Receipt</div>
+                                      <div className="receiptBox">{JSON.stringify(item.receiptJson, null, 2)}</div>
+                                    </div>
+                                  )}
+
+                                  {(item.status === 'queued' || item.status === 'needs review' || item.status === 'failed') && (
+                                    <div className="queueDetailActions">
+                                      <button type="button" className="btn primary" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handlePublishNow(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <IconSend width={16} height={16} /> Publish Now
+                                      </button>
+                                      <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <IconEdit width={16} height={16} /> Edit
+                                      </button>
+                                      <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleStartReschedule(item); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                        <IconClock width={16} height={16} /> Reschedule
+                                      </button>
+                                      {(item.status === 'queued' || item.status === 'failed') && (
+                                        <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleBackToDraft(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                          <IconRefresh width={16} height={16} /> Back to Draft
+                                        </button>
+                                      )}
+                                      <button type="button" className="queueDeleteLink" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }}>
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                  {item.status === 'succeeded' && (
+                                    <span className="subtle" style={{ fontSize: '0.88rem' }}>Published successfully</span>
+                                  )}
+                                </>
                               )}
-
-                              <div>
-                                <span className="formLabel">Created: </span>
-                                <span className="mono subtle">{new Date(item.createdAt).toLocaleString()}</span>
-                              </div>
-
-                              {item.errorMessage && (
-                                <div>
-                                  <div className="formLabel" style={{ marginBottom: 4 }}>Error</div>
-                                  <div className="receiptBox" style={{ color: 'var(--err)' }}>{item.errorMessage}</div>
-                                </div>
-                              )}
-
-                              {item.receiptJson != null && (
-                                <div>
-                                  <div className="formLabel" style={{ marginBottom: 4 }}>Receipt</div>
-                                  <div className="receiptBox">{JSON.stringify(item.receiptJson, null, 2)}</div>
-                                </div>
-                              )}
-
-                              <div className="queueDetailActions">
-                                {item.status === 'failed' && (
-                                  <button
-                                    type="button"
-                                    className="btn primary"
-                                    disabled={actionLoading === item.draftId}
-                                    onClick={(e) => { e.stopPropagation(); handleRetry(item.draftId); }}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                  >
-                                    <IconRetry width={16} height={16} />
-                                    Retry
-                                  </button>
-                                )}
-                                {(item.status === 'queued' || item.status === 'needs review') && (
-                                  <button
-                                    type="button"
-                                    className="btn destructive"
-                                    disabled={actionLoading === item.draftId}
-                                    onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                  >
-                                    <IconTrash width={16} height={16} />
-                                    Cancel
-                                  </button>
-                                )}
-                                {item.status === 'succeeded' && (
-                                  <span className="subtle" style={{ fontSize: '0.88rem' }}>Published successfully</span>
-                                )}
-                              </div>
                             </div>
                           </td>
                         </tr>
@@ -289,38 +418,77 @@ export default function QueuePage() {
 
                   {isExpanded && (
                     <div style={{ marginTop: 10, display: 'grid', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                      {item.mediaIds.length > 0 && <MediaThumbs mediaIds={item.mediaIds} />}
-                      {item.scheduledFor && (
-                        <div>
-                          <span className="formLabel">Scheduled: </span>
-                          <span className="mono subtle" style={{ fontSize: '0.85rem' }}>{new Date(item.scheduledFor).toLocaleString()}</span>
-                        </div>
+                      {editingId === item.fullId ? (
+                        <>
+                          <textarea
+                            className="formTextarea"
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ minHeight: 100 }}
+                          />
+                          <MediaToolbar mediaIds={editMediaIds} onChange={setEditMediaIds} />
+                          <div className="queueDetailActions">
+                            <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !editContent.trim()} onClick={(e) => { e.stopPropagation(); handleSaveEdit(item.draftId); }}>Save</button>
+                            <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); handleCancelEdit(); }}>Cancel</button>
+                          </div>
+                        </>
+                      ) : reschedulingId === item.fullId ? (
+                        <>
+                          <div>
+                            <div className="formLabel" style={{ marginBottom: 4 }}>New date & time</div>
+                            <input type="datetime-local" className="formInput" value={rescheduleValue} onChange={(e) => setRescheduleValue(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                          </div>
+                          <div className="queueDetailActions">
+                            <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !rescheduleValue} onClick={(e) => { e.stopPropagation(); handleSaveReschedule(item.draftId); }}>Save Schedule</button>
+                            <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); setReschedulingId(null); }}>Cancel</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {item.mediaIds.length > 0 && <MediaThumbs mediaIds={item.mediaIds} />}
+                          {item.scheduledFor && (
+                            <div>
+                              <span className="formLabel">Scheduled: </span>
+                              <span className="mono subtle" style={{ fontSize: '0.85rem' }}>{new Date(item.scheduledFor).toLocaleString()}</span>
+                            </div>
+                          )}
+                          <div>
+                            <span className="formLabel">Created: </span>
+                            <span className="mono subtle" style={{ fontSize: '0.85rem' }}>{new Date(item.createdAt).toLocaleString()}</span>
+                          </div>
+                          {item.errorMessage && (
+                            <div className="receiptBox" style={{ color: 'var(--err)' }}>{item.errorMessage}</div>
+                          )}
+                          {item.receiptJson != null && (
+                            <div className="receiptBox">{JSON.stringify(item.receiptJson, null, 2)}</div>
+                          )}
+                          {(item.status === 'queued' || item.status === 'needs review' || item.status === 'failed') && (
+                            <div className="queueDetailActions">
+                              <button type="button" className="btn primary" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handlePublishNow(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <IconSend width={16} height={16} /> Publish Now
+                              </button>
+                              <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <IconEdit width={16} height={16} /> Edit
+                              </button>
+                              <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleStartReschedule(item); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <IconClock width={16} height={16} /> Reschedule
+                              </button>
+                              {(item.status === 'queued' || item.status === 'failed') && (
+                                <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleBackToDraft(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  <IconRefresh width={16} height={16} /> Back to Draft
+                                </button>
+                              )}
+                              <button type="button" className="queueDeleteLink" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }}>
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                          {item.status === 'succeeded' && (
+                            <span className="subtle" style={{ fontSize: '0.88rem' }}>Published successfully</span>
+                          )}
+                        </>
                       )}
-                      <div>
-                        <span className="formLabel">Created: </span>
-                        <span className="mono subtle" style={{ fontSize: '0.85rem' }}>{new Date(item.createdAt).toLocaleString()}</span>
-                      </div>
-                      {item.errorMessage && (
-                        <div className="receiptBox" style={{ color: 'var(--err)' }}>{item.errorMessage}</div>
-                      )}
-                      {item.receiptJson != null && (
-                        <div className="receiptBox">{JSON.stringify(item.receiptJson, null, 2)}</div>
-                      )}
-                      <div className="queueDetailActions">
-                        {item.status === 'failed' && (
-                          <button type="button" className="btn primary" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleRetry(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <IconRetry width={16} height={16} /> Retry
-                          </button>
-                        )}
-                        {(item.status === 'queued' || item.status === 'needs review') && (
-                          <button type="button" className="btn destructive" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <IconTrash width={16} height={16} /> Cancel
-                          </button>
-                        )}
-                        {item.status === 'succeeded' && (
-                          <span className="subtle" style={{ fontSize: '0.88rem' }}>Published successfully</span>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>

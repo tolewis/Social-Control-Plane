@@ -384,13 +384,13 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
     );
   }
 
-  buildTokenExchangeRequest(params: OAuthTokenExchangeParams & { state?: string }): HttpRequest {
+  buildTokenExchangeRequest(params: OAuthTokenExchangeParams): HttpRequest {
     const clientId = requiredEnv('X_API_KEY');
     const clientSecret = requiredEnv('X_API_SECRET');
 
     // code_verifier must match the code_challenge sent during authorization.
     // We derived code_challenge from state, so code_verifier = state.
-    const codeVerifier = (params as { state?: string }).state ?? '';
+    const codeVerifier = params.state ?? '';
 
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 

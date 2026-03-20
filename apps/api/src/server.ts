@@ -227,7 +227,7 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
   const adapter = createAuthAdapter(params.provider);
   let tokenReq: HttpRequest;
   try {
-    tokenReq = adapter.buildTokenExchangeRequest({ code: body.code, redirectUri });
+    tokenReq = adapter.buildTokenExchangeRequest({ code: body.code, redirectUri, state: body.state });
   } catch (err) {
     return reply.code(400).send({ error: err instanceof Error ? err.message : 'token_exchange_build_failed' });
   }
@@ -533,6 +533,11 @@ app.put('/drafts/:id', async (request, reply) => {
   const existing = await prisma.draft.findUnique({ where: { id: params.id } });
   if (!existing) return reply.code(404).send({ error: 'draft_not_found' });
 
+  // Block edits on published posts
+  if (existing.status === 'published') {
+    return reply.code(409).send({ error: 'cannot_edit_published', message: 'Published posts cannot be edited.' });
+  }
+
   const data: Record<string, unknown> = {};
   if (body.content !== undefined) data.content = body.content;
   if (body.title !== undefined) data.title = body.title;
@@ -544,12 +549,34 @@ app.put('/drafts/:id', async (request, reply) => {
     data.publishMode = body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT';
   }
 
+  // If content or media changed on a queued post, cancel the pending job
+  // and reset to draft so the user re-reviews before publishing.
+  const contentChanged = body.content !== undefined || body.mediaIds !== undefined;
+  if (contentChanged && (existing.status === 'queued' || existing.status === 'failed')) {
+    data.status = 'draft';
+
+    // Cancel any pending BullMQ jobs for this draft
+    const pendingJobs = await prisma.publishJob.findMany({
+      where: { draftId: params.id, status: { in: ['PENDING', 'PROCESSING'] } },
+    });
+    for (const pj of pendingJobs) {
+      try {
+        const bullJob = await publishQueue.getJob(pj.id);
+        if (bullJob) await bullJob.remove();
+      } catch { /* best effort */ }
+    }
+    await prisma.publishJob.updateMany({
+      where: { draftId: params.id, status: { in: ['PENDING', 'PROCESSING'] } },
+      data: { status: 'CANCELED', updatedAt: new Date() },
+    });
+  }
+
   const draft = await prisma.draft.update({
     where: { id: params.id },
     data,
   });
 
-  await audit('draft', draft.id, 'updated', { fields: Object.keys(body) });
+  await audit('draft', draft.id, 'updated', { fields: Object.keys(body), statusReset: contentChanged && (existing.status === 'queued' || existing.status === 'failed') });
 
   return { draft: draftToJson(draft as DraftRow) };
 });
@@ -571,6 +598,143 @@ app.delete('/drafts/:id', async (request, reply) => {
 });
 
 // ---------------------------------------------------------------------------
+// Reschedule — change scheduledFor + update BullMQ job delay
+// ---------------------------------------------------------------------------
+app.post('/drafts/:id/reschedule', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const body = z
+    .object({
+      scheduledFor: z.string().datetime(),
+    })
+    .parse(request.body);
+
+  const existing = await prisma.draft.findUnique({ where: { id: params.id } });
+  if (!existing) return reply.code(404).send({ error: 'draft_not_found' });
+
+  if (existing.status === 'published') {
+    return reply.code(409).send({ error: 'cannot_reschedule_published', message: 'Published posts cannot be rescheduled.' });
+  }
+
+  const newScheduledFor = new Date(body.scheduledFor);
+
+  // Update the draft's scheduledFor
+  const draft = await prisma.draft.update({
+    where: { id: params.id },
+    data: { scheduledFor: newScheduledFor },
+  });
+
+  // If there's a pending BullMQ job, remove it and re-enqueue with the new delay
+  const pendingJob = await prisma.publishJob.findFirst({
+    where: { draftId: params.id, status: { in: ['PENDING'] } },
+  });
+
+  let rescheduledJob = false;
+  if (pendingJob) {
+    // Remove old BullMQ job
+    try {
+      const bullJob = await publishQueue.getJob(pendingJob.id);
+      if (bullJob) await bullJob.remove();
+    } catch { /* best effort */ }
+
+    // Cancel old DB job
+    await prisma.publishJob.update({
+      where: { id: pendingJob.id },
+      data: { status: 'CANCELED', updatedAt: new Date() },
+    });
+
+    // Create new job with updated delay
+    const connection = await prisma.socialConnection.findUnique({
+      where: { id: existing.connectionId },
+    });
+
+    const idemKey = crypto.randomUUID();
+    const newJob = await prisma.publishJob.create({
+      data: {
+        draftId: draft.id,
+        connectionId: draft.connectionId,
+        status: 'PENDING',
+        idempotencyKey: idemKey,
+      },
+    });
+
+    const scheduledDelay = Math.max(0, newScheduledFor.getTime() - Date.now());
+
+    await publishQueue.add(
+      'draft.publish',
+      {
+        accountId: draft.connectionId,
+        draftId: draft.id,
+        connectionId: draft.connectionId,
+        provider: connection?.provider ?? 'linkedin',
+        publishMode: draft.publishMode.toLowerCase(),
+        idempotencyKey: idemKey,
+      },
+      {
+        jobId: newJob.id,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        delay: scheduledDelay,
+      },
+    );
+
+    rescheduledJob = true;
+  }
+
+  await audit('draft', draft.id, 'rescheduled', {
+    scheduledFor: body.scheduledFor,
+    jobRescheduled: rescheduledJob,
+  });
+
+  return {
+    draft: draftToJson(draft as DraftRow),
+    rescheduledJob,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Revert to draft — cancel pending jobs and reset status
+// ---------------------------------------------------------------------------
+app.post('/drafts/:id/back-to-draft', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  const existing = await prisma.draft.findUnique({ where: { id: params.id } });
+  if (!existing) return reply.code(404).send({ error: 'draft_not_found' });
+
+  if (existing.status === 'published') {
+    return reply.code(409).send({ error: 'cannot_revert_published', message: 'Published posts cannot be reverted to draft.' });
+  }
+  if (existing.status === 'draft') {
+    return reply.code(409).send({ error: 'already_draft', message: 'Post is already a draft.' });
+  }
+
+  // Cancel any pending/processing BullMQ jobs for this draft
+  const pendingJobs = await prisma.publishJob.findMany({
+    where: { draftId: params.id, status: { in: ['PENDING', 'PROCESSING'] } },
+  });
+  for (const pj of pendingJobs) {
+    try {
+      const bullJob = await publishQueue.getJob(pj.id);
+      if (bullJob) await bullJob.remove();
+    } catch { /* best effort */ }
+  }
+  if (pendingJobs.length > 0) {
+    await prisma.publishJob.updateMany({
+      where: { draftId: params.id, status: { in: ['PENDING', 'PROCESSING'] } },
+      data: { status: 'CANCELED', updatedAt: new Date() },
+    });
+  }
+
+  const draft = await prisma.draft.update({
+    where: { id: params.id },
+    data: { status: 'draft', updatedAt: new Date() },
+  });
+
+  await audit('draft', draft.id, 'reverted_to_draft', { previousStatus: existing.status, jobsCanceled: pendingJobs.length });
+
+  return { draft: draftToJson(draft as DraftRow) };
+});
+
+// ---------------------------------------------------------------------------
 // Publish — enqueue via BullMQ + rate limit per connection
 // ---------------------------------------------------------------------------
 app.post('/publish/:draftId', async (request, reply) => {
@@ -583,6 +747,27 @@ app.post('/publish/:draftId', async (request, reply) => {
 
   const draft = await prisma.draft.findUnique({ where: { id: params.draftId } });
   if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
+
+  // --- Clean up stale jobs for THIS draft before rate-limiting ---
+  // If the draft is in 'draft' or 'failed' status, any old PENDING/PROCESSING
+  // jobs are stale leftovers from a previous cycle (edit reset, failed publish, etc).
+  if (draft.status === 'draft' || draft.status === 'failed') {
+    const staleJobs = await prisma.publishJob.findMany({
+      where: { draftId: draft.id, status: { in: ['PENDING', 'PROCESSING'] } },
+    });
+    for (const sj of staleJobs) {
+      try {
+        const bullJob = await publishQueue.getJob(sj.id);
+        if (bullJob) await bullJob.remove();
+      } catch { /* best effort */ }
+    }
+    if (staleJobs.length > 0) {
+      await prisma.publishJob.updateMany({
+        where: { draftId: draft.id, status: { in: ['PENDING', 'PROCESSING'] } },
+        data: { status: 'CANCELED', updatedAt: new Date() },
+      });
+    }
+  }
 
   // --- Idempotency check ---
   const idemKey = body.idempotencyKey ?? crypto.randomUUID();

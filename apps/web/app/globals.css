@@ -1440,6 +1440,21 @@ button:active, .chip:active, .listItem:active {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.queueDeleteLink {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.queueDeleteLink:hover {
+  color: var(--err);
 }
 
 .receiptBox {

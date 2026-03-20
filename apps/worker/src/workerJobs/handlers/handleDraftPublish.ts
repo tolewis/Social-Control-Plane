@@ -289,15 +289,21 @@ export async function handleDraftPublish(
 
   // 7. Handle response
   if (result.ok) {
-    // SUCCESS -- persist receipt
-    await db.publishJob.updateMany({
-      where: { draftId, connectionId, status: 'PROCESSING' },
-      data: {
-        status: 'SUCCEEDED',
-        receiptJson: result.body,
-        updatedAt: new Date(),
-      },
-    });
+    // SUCCESS -- persist receipt and mark draft published
+    await Promise.all([
+      db.publishJob.updateMany({
+        where: { draftId, connectionId, status: 'PROCESSING' },
+        data: {
+          status: 'SUCCEEDED',
+          receiptJson: result.body,
+          updatedAt: new Date(),
+        },
+      }),
+      db.draft.update({
+        where: { id: draftId },
+        data: { status: 'published', updatedAt: new Date() },
+      }),
+    ]);
 
     log.info('draft.publish.succeeded', {
       jobId: job.id,
@@ -309,15 +315,21 @@ export async function handleDraftPublish(
   } else {
     // HTTP 4xx/5xx -- mark FAILED
     const errorMsg = `publish_failed:${result.status}`;
-    await db.publishJob.updateMany({
-      where: { draftId, connectionId, status: 'PROCESSING' },
-      data: {
-        status: 'FAILED',
-        errorMessage: errorMsg,
-        receiptJson: result.body,
-        updatedAt: new Date(),
-      },
-    });
+    await Promise.all([
+      db.publishJob.updateMany({
+        where: { draftId, connectionId, status: 'PROCESSING' },
+        data: {
+          status: 'FAILED',
+          errorMessage: errorMsg,
+          receiptJson: result.body,
+          updatedAt: new Date(),
+        },
+      }),
+      db.draft.update({
+        where: { id: draftId },
+        data: { status: 'failed', updatedAt: new Date() },
+      }),
+    ]);
 
     log.error('draft.publish.http_error', {
       jobId: job.id,
@@ -343,18 +355,24 @@ async function markFailed(
   errorMessage: string,
 ): Promise<void> {
   try {
-    await db.publishJob.updateMany({
-      where: {
-        draftId,
-        connectionId,
-        status: { in: ['PENDING', 'PROCESSING'] },
-      },
-      data: {
-        status: 'FAILED',
-        errorMessage,
-        updatedAt: new Date(),
-      },
-    });
+    await Promise.all([
+      db.publishJob.updateMany({
+        where: {
+          draftId,
+          connectionId,
+          status: { in: ['PENDING', 'PROCESSING'] },
+        },
+        data: {
+          status: 'FAILED',
+          errorMessage,
+          updatedAt: new Date(),
+        },
+      }),
+      db.draft.update({
+        where: { id: draftId },
+        data: { status: 'failed', updatedAt: new Date() },
+      }),
+    ]);
   } catch {
     // Best effort -- don't let DB error crash the worker
   }
