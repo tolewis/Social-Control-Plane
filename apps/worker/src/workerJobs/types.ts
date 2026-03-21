@@ -1,7 +1,7 @@
 export const QUEUE_NAME = 'scp-jobs' as const;
 
 export type Provider = 'linkedin' | 'facebook' | 'instagram' | 'x';
-export type PublishMode = 'draft' | 'direct';
+export type PublishMode = 'draft-human' | 'draft-agent' | 'direct-human' | 'direct-agent';
 
 export type DraftPublishJobData = {
   accountId: string;

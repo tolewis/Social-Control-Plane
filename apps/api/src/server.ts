@@ -448,7 +448,7 @@ function draftToJson(d: DraftRow) {
   return {
     id: d.id,
     connectionId: d.connectionId,
-    publishMode: d.publishMode.toLowerCase(),
+    publishMode: d.publishMode,
     content: d.content,
     title: d.title,
     mediaIds: Array.isArray(d.mediaJson) ? d.mediaJson : [],
@@ -486,7 +486,7 @@ app.post('/drafts', async (request, reply) => {
   const body = z
     .object({
       connectionId: z.string().min(1),
-      publishMode: z.enum(['draft', 'direct']),
+      publishMode: z.enum(['draft-human', 'draft-agent', 'direct-human', 'direct-agent']),
       content: z.string().min(1),
       title: z.string().optional(),
       mediaIds: z.array(z.string()).optional(),
@@ -500,15 +500,17 @@ app.post('/drafts', async (request, reply) => {
   });
   if (!connection) return reply.code(400).send({ error: 'unknown_connection' });
 
+  const isDraft = body.publishMode.startsWith('draft');
+
   const draft = await prisma.draft.create({
     data: {
       connectionId: body.connectionId,
-      publishMode: body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT',
+      publishMode: body.publishMode,
       content: body.content,
       title: body.title ?? null,
       mediaJson: body.mediaIds ?? [],
       scheduledFor: body.scheduledFor ? new Date(body.scheduledFor) : null,
-      status: body.publishMode === 'draft' ? 'draft' : 'queued',
+      status: isDraft ? 'draft' : 'queued',
     },
   });
 
@@ -526,7 +528,7 @@ app.put('/drafts/:id', async (request, reply) => {
       title: z.string().optional(),
       mediaIds: z.array(z.string()).optional(),
       scheduledFor: z.string().datetime().nullable().optional(),
-      publishMode: z.enum(['draft', 'direct']).optional(),
+      publishMode: z.enum(['draft-human', 'draft-agent', 'direct-human', 'direct-agent']).optional(),
     })
     .parse(request.body);
 
@@ -546,7 +548,7 @@ app.put('/drafts/:id', async (request, reply) => {
     data.scheduledFor = body.scheduledFor ? new Date(body.scheduledFor) : null;
   }
   if (body.publishMode !== undefined) {
-    data.publishMode = body.publishMode === 'draft' ? 'DRAFT' : 'DIRECT';
+    data.publishMode = body.publishMode;
   }
 
   // If content or media changed on a queued post, cancel the pending job
@@ -666,7 +668,7 @@ app.post('/drafts/:id/reschedule', async (request, reply) => {
         draftId: draft.id,
         connectionId: draft.connectionId,
         provider: connection?.provider ?? 'linkedin',
-        publishMode: draft.publishMode.toLowerCase(),
+        publishMode: draft.publishMode,
         idempotencyKey: idemKey,
       },
       {
@@ -828,7 +830,7 @@ app.post('/publish/:draftId', async (request, reply) => {
       draftId: draft.id,
       connectionId: draft.connectionId,
       provider: connection?.provider ?? 'linkedin',
-      publishMode: draft.publishMode.toLowerCase(),
+      publishMode: draft.publishMode,
       idempotencyKey: idemKey,
     },
     {
@@ -844,7 +846,7 @@ app.post('/publish/:draftId', async (request, reply) => {
     draft: {
       id: draft.id,
       connectionId: draft.connectionId,
-      publishMode: draft.publishMode.toLowerCase(),
+      publishMode: draft.publishMode,
       content: draft.content,
       status: 'queued',
       createdAt: draft.createdAt.toISOString(),

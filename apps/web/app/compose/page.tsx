@@ -26,7 +26,7 @@ export default function ComposePage() {
   const { connections, loading } = useConnections();
 
   const [connectionId, setConnectionId] = useState('');
-  const [publishMode, setPublishMode] = useState<PublishMode>('draft');
+  const [publishMode, setPublishMode] = useState<PublishMode>('draft-human');
   const [content, setContent] = useState('');
   const [scheduledFor, setScheduledFor] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
@@ -63,7 +63,7 @@ export default function ComposePage() {
         mediaIds: mediaIds.length > 0 ? mediaIds : undefined,
         scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
       });
-      if (publishMode === 'draft') {
+      if (publishMode.startsWith('draft')) {
         router.push('/review');
       } else {
         router.push('/queue');
@@ -143,15 +143,15 @@ export default function ComposePage() {
           <div className="toggleGroup">
             <button
               type="button"
-              className={publishMode === 'draft' ? 'toggleBtn active' : 'toggleBtn'}
-              onClick={() => setPublishMode('draft')}
+              className={publishMode === 'draft-human' ? 'toggleBtn active' : 'toggleBtn'}
+              onClick={() => setPublishMode('draft-human')}
             >
               Draft for review
             </button>
             <button
               type="button"
-              className={publishMode === 'direct' ? 'toggleBtn active' : 'toggleBtn'}
-              onClick={() => setPublishMode('direct')}
+              className={publishMode === 'direct-human' ? 'toggleBtn active' : 'toggleBtn'}
+              onClick={() => setPublishMode('direct-human')}
             >
               Publish directly
             </button>
@@ -223,7 +223,7 @@ export default function ComposePage() {
           >
             {submitting
               ? 'Creating...'
-              : publishMode === 'draft'
+              : publishMode.startsWith('draft')
                 ? 'Create Draft'
                 : 'Queue for Publishing'}
           </button>

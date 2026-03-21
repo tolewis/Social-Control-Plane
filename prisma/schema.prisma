@@ -8,11 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum PublishMode {
-  DRAFT
-  DIRECT
-}
-
 enum PublishJobStatus {
   PENDING
   PROCESSING
@@ -49,7 +44,7 @@ model SocialConnection {
 model Draft {
   id             String   @id @default(cuid())
   connectionId   String
-  publishMode    PublishMode
+  publishMode    String
   status         String   @default("draft")
   title          String?
   content        String   @db.Text

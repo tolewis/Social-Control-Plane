@@ -33,7 +33,7 @@ function QuickCompose({ connections }: { connections: ConnectionRecord[] }) {
     if (!canSend) return;
     setSending(true);
     try {
-      await createDraft({ connectionId, publishMode: 'draft', content });
+      await createDraft({ connectionId, publishMode: 'draft-human', content });
       setContent('');
       router.push('/review');
     } catch {

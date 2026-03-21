@@ -1,7 +1,7 @@
 export const PROVIDERS = ['linkedin', 'facebook', 'instagram', 'x'] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
-export type PublishMode = 'draft' | 'direct';
+export type PublishMode = 'draft-human' | 'draft-agent' | 'direct-human' | 'direct-agent';
 export type DraftStatus = 'draft' | 'queued' | 'published' | 'failed';
 
 export interface DraftRecord {

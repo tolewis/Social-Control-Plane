@@ -16,7 +16,7 @@ function base(): string {
 /* ------------------------------------------------------------------ */
 
 export type ProviderId = 'linkedin' | 'facebook' | 'instagram' | 'x';
-export type PublishMode = 'draft' | 'direct';
+export type PublishMode = 'draft-human' | 'draft-agent' | 'direct-human' | 'direct-agent';
 export type DraftStatus = 'draft' | 'queued' | 'published' | 'failed';
 export type ConnectionStatus = 'pending' | 'connected' | 'revoked' | 'error';
 export type PublishJobStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled';
