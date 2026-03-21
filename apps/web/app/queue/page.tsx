@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { StatusPill } from '../_components/ui';
 import { ProviderIcon, IconRetry, IconTrash, IconSend, IconEdit, IconClock, IconRefresh } from '../_components/icons';
 import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
+import { DateTimePicker } from '../_components/DateTimePicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
@@ -304,15 +305,9 @@ export default function QueuePage() {
                               ) : reschedulingId === item.fullId ? (
                                 /* ---- Reschedule mode ---- */
                                 <>
-                                  <div>
+                                  <div onClick={(e) => e.stopPropagation()}>
                                     <div className="formLabel" style={{ marginBottom: 6 }}>New date & time</div>
-                                    <input
-                                      type="datetime-local"
-                                      className="formInput"
-                                      value={rescheduleValue}
-                                      onChange={(e) => setRescheduleValue(e.target.value)}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
+                                    <DateTimePicker value={rescheduleValue} onChange={setRescheduleValue} />
                                   </div>
                                   <div className="queueDetailActions">
                                     <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !rescheduleValue} onClick={(e) => { e.stopPropagation(); handleSaveReschedule(item.draftId); }}>Save Schedule</button>
@@ -437,7 +432,7 @@ export default function QueuePage() {
                         <>
                           <div>
                             <div className="formLabel" style={{ marginBottom: 4 }}>New date & time</div>
-                            <input type="datetime-local" className="formInput" value={rescheduleValue} onChange={(e) => setRescheduleValue(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                            <div onClick={(e) => e.stopPropagation()}><DateTimePicker value={rescheduleValue} onChange={setRescheduleValue} /></div>
                           </div>
                           <div className="queueDetailActions">
                             <button type="button" className="btn primary" disabled={actionLoading === item.draftId || !rescheduleValue} onClick={(e) => { e.stopPropagation(); handleSaveReschedule(item.draftId); }}>Save Schedule</button>

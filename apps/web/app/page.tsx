@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StatusPill } from './_components/ui';
 import { ProviderIcon, IconPlus, IconSend } from './_components/icons';
+import { CustomSelect, type SelectOption } from './_components/CustomSelect';
 import { useConnections } from './hooks/useConnections';
 import { useDrafts } from './hooks/useDrafts';
 import { useJobs } from './hooks/useJobs';
@@ -23,6 +24,15 @@ function relativeTime(iso: string): string {
 function QuickCompose({ connections }: { connections: ConnectionRecord[] }) {
   const router = useRouter();
   const connected = useMemo(() => connections.filter((c) => c.status === 'connected'), [connections]);
+  const connectionOptions: SelectOption[] = useMemo(
+    () => connected.map((c) => ({
+      value: c.id,
+      label: c.displayName || c.provider,
+      icon: <ProviderIcon provider={c.provider} size={18} />,
+      meta: c.provider,
+    })),
+    [connected],
+  );
   const [content, setContent] = useState('');
   const [connectionId, setConnectionId] = useState('');
   const [sending, setSending] = useState(false);
@@ -53,17 +63,14 @@ function QuickCompose({ connections }: { connections: ConnectionRecord[] }) {
         onChange={(e) => setContent(e.target.value)}
         rows={2}
       />
-      <select
-        value={connectionId}
-        onChange={(e) => setConnectionId(e.target.value)}
-      >
-        <option value="">Account</option>
-        {connected.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.provider}{c.displayName ? ` - ${c.displayName}` : ''}
-          </option>
-        ))}
-      </select>
+      <div style={{ minWidth: 180 }}>
+        <CustomSelect
+          options={connectionOptions}
+          value={connectionId}
+          onChange={setConnectionId}
+          placeholder="Account"
+        />
+      </div>
       <button
         type="button"
         className="btn primary"

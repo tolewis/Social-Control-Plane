@@ -12,6 +12,7 @@ import {
   IconQueue,
   IconPlus,
   IconCalendar,
+  IconGear,
 } from './icons';
 
 /** Returns true when the on-screen keyboard is likely open (iOS/Android). */
@@ -53,6 +54,7 @@ const nav: NavItem[] = [
   { label: 'Review', href: '/review', icon: IconCheckSquare },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
   { label: 'Connections', href: '/connections', icon: IconPlug },
+  { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 
 const mobileNav: NavItem[] = [

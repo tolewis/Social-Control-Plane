@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   NotImplementedError,
   type HttpRequest,
@@ -9,11 +10,36 @@ import {
   type ProviderPublishAdapter,
 } from '../../shared/src/index.js';
 
+/* ------------------------------------------------------------------ */
+/*  Credential injection                                               */
+/* ------------------------------------------------------------------ */
+
+export interface ProviderCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
 const requiredEnv = (name: string): string => {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env: ${name}`);
   return value;
 };
+
+/**
+ * Resolve a credential value: use injected credentials first, fall back to env.
+ */
+function resolveCred(
+  creds: ProviderCredentials | undefined,
+  field: 'clientId' | 'clientSecret',
+  envName: string,
+): string {
+  if (creds?.[field]) return creds[field];
+  return requiredEnv(envName);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
 
 const asRecord = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== 'object') return {};
@@ -29,11 +55,21 @@ const formBody = (pairs: Record<string, string>): string => {
   return sp.toString();
 };
 
+/* ------------------------------------------------------------------ */
+/*  LinkedIn                                                           */
+/* ------------------------------------------------------------------ */
+
 export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   provider = 'linkedin' as const;
+  private creds?: ProviderCredentials;
+
+  constructor(creds?: ProviderCredentials) { this.creds = creds; }
+
+  private clientId() { return resolveCred(this.creds, 'clientId', 'LINKEDIN_CLIENT_ID'); }
+  private clientSecret() { return resolveCred(this.creds, 'clientSecret', 'LINKEDIN_CLIENT_SECRET'); }
 
   getAuthorizationUrl(params: OAuthAuthorizeParams): string {
-    const clientId = requiredEnv('LINKEDIN_CLIENT_ID');
+    const clientId = this.clientId();
 
     const scopes = (params.scopes?.length ? params.scopes : [
       'openid',
@@ -59,8 +95,8 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 
   buildTokenExchangeRequest(params: OAuthTokenExchangeParams): HttpRequest {
-    const clientId = requiredEnv('LINKEDIN_CLIENT_ID');
-    const clientSecret = requiredEnv('LINKEDIN_CLIENT_SECRET');
+    const clientId = this.clientId();
+    const clientSecret = this.clientSecret();
 
     return {
       method: 'POST',
@@ -79,8 +115,8 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 
   buildRefreshRequest(params: { refreshToken: string }): HttpRequest {
-    const clientId = requiredEnv('LINKEDIN_CLIENT_ID');
-    const clientSecret = requiredEnv('LINKEDIN_CLIENT_SECRET');
+    const clientId = this.clientId();
+    const clientSecret = this.clientSecret();
 
     return {
       method: 'POST',
@@ -120,10 +156,6 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
     text: string;
     idempotencyKey: string;
   }): HttpRequest {
-    // This is a *best-effort* LinkedIn "simple text" post shape.
-    // LinkedIn has multiple posting APIs (ugcPosts, shares, assets upload flows).
-    // This is intentionally minimal; the worker should own multi-step media flows.
-
     if (!input.accountRef) {
       throw new NotImplementedError('LinkedIn publish requires accountRef (person/org id)');
     }
@@ -149,7 +181,6 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
         authorization: `Bearer ${input.accessToken}`,
         'content-type': 'application/json',
         'x-restli-protocol-version': '2.0.0',
-        // Best-effort idempotency. LinkedIn may ignore unknown headers.
         'x-scp-idempotency-key': input.idempotencyKey,
       },
       body: JSON.stringify(body),
@@ -157,11 +188,21 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Facebook                                                           */
+/* ------------------------------------------------------------------ */
+
 export class FacebookAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   provider = 'facebook' as const;
+  private creds?: ProviderCredentials;
+
+  constructor(creds?: ProviderCredentials) { this.creds = creds; }
+
+  private appId() { return resolveCred(this.creds, 'clientId', 'FACEBOOK_APP_ID'); }
+  private appSecret() { return resolveCred(this.creds, 'clientSecret', 'FACEBOOK_APP_SECRET'); }
 
   getAuthorizationUrl(params: OAuthAuthorizeParams): string {
-    const clientId = requiredEnv('FACEBOOK_APP_ID');
+    const clientId = this.appId();
     const scopes = (params.scopes?.length ? params.scopes : [
       'pages_show_list',
       'business_management',
@@ -181,8 +222,8 @@ export class FacebookAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 
   buildTokenExchangeRequest(params: OAuthTokenExchangeParams): HttpRequest {
-    const appId = requiredEnv('FACEBOOK_APP_ID');
-    const appSecret = requiredEnv('FACEBOOK_APP_SECRET');
+    const appId = this.appId();
+    const appSecret = this.appSecret();
 
     return {
       method: 'GET',
@@ -198,8 +239,8 @@ export class FacebookAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 
   buildRefreshRequest(params: { refreshToken: string }): HttpRequest {
-    const appId = requiredEnv('FACEBOOK_APP_ID');
-    const appSecret = requiredEnv('FACEBOOK_APP_SECRET');
+    const appId = this.appId();
+    const appSecret = this.appSecret();
 
     // Facebook long-lived token exchange: exchange a short-lived token for a long-lived one.
     // The "refresh" is actually an exchange via fb_exchange_token grant type.
@@ -254,12 +295,22 @@ export class FacebookAdapter implements ProviderAuthAdapter, ProviderPublishAdap
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Instagram                                                          */
+/* ------------------------------------------------------------------ */
+
 export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   provider = 'instagram' as const;
+  private creds?: ProviderCredentials;
+
+  constructor(creds?: ProviderCredentials) { this.creds = creds; }
+
+  private appId() { return resolveCred(this.creds, 'clientId', 'FACEBOOK_APP_ID'); }
+  private appSecret() { return resolveCred(this.creds, 'clientSecret', 'FACEBOOK_APP_SECRET'); }
 
   getAuthorizationUrl(params: OAuthAuthorizeParams): string {
     // Instagram Graph uses the Meta app auth dialog.
-    const clientId = requiredEnv('FACEBOOK_APP_ID');
+    const clientId = this.appId();
     const scopes = (params.scopes?.length ? params.scopes : [
       'instagram_basic',
       'instagram_content_publish',
@@ -277,8 +328,8 @@ export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAda
   }
 
   buildTokenExchangeRequest(params: OAuthTokenExchangeParams): HttpRequest {
-    const appId = requiredEnv('FACEBOOK_APP_ID');
-    const appSecret = requiredEnv('FACEBOOK_APP_SECRET');
+    const appId = this.appId();
+    const appSecret = this.appSecret();
 
     // NOTE: For Instagram Graph, the first exchange is still via the Graph OAuth endpoint.
     return {
@@ -313,16 +364,15 @@ export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAda
     text: string;
     idempotencyKey: string;
   }): HttpRequest {
-    // Instagram Content Publishing API is a 2-step flow:
-    //   1. POST /{accountRef}/media  (create media container)
-    //   2. POST /{accountRef}/media_publish  (publish the container using creation_id)
-    // Instagram does NOT support text-only posts — an image or video URL is required.
-    // For MVP, the worker will need to orchestrate the 2-step flow for media posts.
     throw new NotImplementedError(
       'Instagram requires media (image/video) for publishing. Text-only posts not supported.',
     );
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  X (Twitter)                                                        */
+/* ------------------------------------------------------------------ */
 
 /**
  * Base64url-encode a buffer (no padding, URL-safe alphabet).
@@ -347,6 +397,12 @@ const pkceS256 = async (codeVerifier: string): Promise<string> => {
 
 export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   provider = 'x' as const;
+  private creds?: ProviderCredentials;
+
+  constructor(creds?: ProviderCredentials) { this.creds = creds; }
+
+  private clientId() { return resolveCred(this.creds, 'clientId', 'X_API_KEY'); }
+  private clientSecret() { return resolveCred(this.creds, 'clientSecret', 'X_API_SECRET'); }
 
   /**
    * PKCE note: the adapter is stateless, so we derive the code_verifier deterministically
@@ -355,10 +411,7 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
    */
 
   getAuthorizationUrl(params: OAuthAuthorizeParams): string {
-    // This method is synchronous per the interface, but PKCE S256 needs a hash.
-    // We compute it synchronously using Node's createHash (available everywhere).
-    const { createHash } = require('node:crypto') as typeof import('node:crypto');
-    const clientId = requiredEnv('X_API_KEY');
+    const clientId = this.clientId();
 
     const scopes = (params.scopes?.length ? params.scopes : [
       'tweet.read',
@@ -373,7 +426,7 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
     const codeChallenge = base64url(new Uint8Array(digest));
 
     return (
-      'https://twitter.com/i/oauth2/authorize'
+      'https://x.com/i/oauth2/authorize'
       + `?response_type=code`
       + `&client_id=${encodeURIComponent(clientId)}`
       + `&redirect_uri=${encodeURIComponent(params.redirectUri)}`
@@ -385,8 +438,8 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   }
 
   buildTokenExchangeRequest(params: OAuthTokenExchangeParams): HttpRequest {
-    const clientId = requiredEnv('X_API_KEY');
-    const clientSecret = requiredEnv('X_API_SECRET');
+    const clientId = this.clientId();
+    const clientSecret = this.clientSecret();
 
     // code_verifier must match the code_challenge sent during authorization.
     // We derived code_challenge from state, so code_verifier = state.
@@ -396,7 +449,7 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
 
     return {
       method: 'POST',
-      url: 'https://api.twitter.com/2/oauth2/token',
+      url: 'https://api.x.com/2/oauth2/token',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         authorization: `Basic ${basicAuth}`,
@@ -412,14 +465,14 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   }
 
   buildRefreshRequest(params: { refreshToken: string }): HttpRequest {
-    const clientId = requiredEnv('X_API_KEY');
-    const clientSecret = requiredEnv('X_API_SECRET');
+    const clientId = this.clientId();
+    const clientSecret = this.clientSecret();
 
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     return {
       method: 'POST',
-      url: 'https://api.twitter.com/2/oauth2/token',
+      url: 'https://api.x.com/2/oauth2/token',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         authorization: `Basic ${basicAuth}`,
@@ -455,7 +508,7 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   }): HttpRequest {
     return {
       method: 'POST',
-      url: 'https://api.twitter.com/2/tweets',
+      url: 'https://api.x.com/2/tweets',
       headers: {
         authorization: `Bearer ${input.accessToken}`,
         'content-type': 'application/json',
@@ -465,16 +518,20 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   }
 }
 
-export const createAuthAdapter = (provider: ProviderId): ProviderAuthAdapter => {
+/* ------------------------------------------------------------------ */
+/*  Factory                                                            */
+/* ------------------------------------------------------------------ */
+
+export const createAuthAdapter = (provider: ProviderId, creds?: ProviderCredentials): ProviderAuthAdapter => {
   switch (provider) {
     case 'linkedin':
-      return new LinkedInAdapter();
+      return new LinkedInAdapter(creds);
     case 'facebook':
-      return new FacebookAdapter();
+      return new FacebookAdapter(creds);
     case 'instagram':
-      return new InstagramAdapter();
+      return new InstagramAdapter(creds);
     case 'x':
-      return new XAdapter();
+      return new XAdapter(creds);
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }

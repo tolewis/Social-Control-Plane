@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac, timingSafeEqual, createHash, randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync, unlinkSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -13,6 +13,7 @@ import {
   FacebookAdapter,
   InstagramAdapter,
   XAdapter,
+  type ProviderCredentials,
 } from '@scp/providers';
 import type {
   HttpRequest,
@@ -43,6 +44,96 @@ await app.register(fastifyStatic, {
 });
 
 // ---------------------------------------------------------------------------
+// Operator auth — HMAC-signed bearer tokens
+// ---------------------------------------------------------------------------
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function signToken(): string {
+  const expiry = Date.now() + TOKEN_TTL_MS;
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) throw new Error('ENCRYPTION_KEY not set');
+  const sig = createHmac('sha256', key).update(`scp:${expiry}`).digest('hex');
+  return `${expiry}.${sig}`;
+}
+
+function verifyToken(token: string): boolean {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) return false;
+  const dot = token.indexOf('.');
+  if (dot === -1) return false;
+  const expiryStr = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expiry = Number(expiryStr);
+  if (isNaN(expiry) || Date.now() > expiry) return false;
+  const expected = createHmac('sha256', key).update(`scp:${expiry}`).digest('hex');
+  try {
+    return timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+const PUBLIC_PATHS = new Set(['/health', '/auth/login', '/auth/check']);
+
+app.addHook('onRequest', async (request, reply) => {
+  // Skip auth if no ADMIN_PASSWORD configured (dev mode / backwards compat)
+  if (!process.env.ADMIN_PASSWORD) return;
+
+  const urlPath = request.url.split('?')[0];
+  if (PUBLIC_PATHS.has(urlPath)) return;
+  // Allow static uploads without auth
+  if (urlPath.startsWith('/uploads/')) return;
+
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const bearerValue = authHeader.slice(7);
+
+  // API key auth: scp_ prefix
+  if (bearerValue.startsWith('scp_')) {
+    const keyHash = createHash('sha256').update(bearerValue).digest('hex');
+    const apiKey = await prisma.apiKey.findFirst({ where: { keyHash }, include: { operator: true } });
+    if (!apiKey) return reply.code(401).send({ error: 'invalid_api_key' });
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      return reply.code(401).send({ error: 'api_key_expired' });
+    }
+    // Update lastUsedAt (fire-and-forget)
+    prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+    // Attach operator info to request for audit
+    (request as Record<string, unknown>).operatorId = apiKey.operator.id;
+    (request as Record<string, unknown>).operatorName = apiKey.operator.name;
+    (request as Record<string, unknown>).operatorRole = apiKey.operator.role;
+    return;
+  }
+
+  // HMAC token auth (human login)
+  if (!verifyToken(bearerValue)) {
+    return reply.code(401).send({ error: 'invalid_or_expired_token' });
+  }
+});
+
+app.post('/auth/login', async (request, reply) => {
+  const body = z.object({ password: z.string().min(1) }).parse(request.body);
+  const expected = process.env.ADMIN_PASSWORD;
+  if (!expected) {
+    return reply.code(500).send({ error: 'ADMIN_PASSWORD not configured' });
+  }
+  if (body.password !== expected) {
+    return reply.code(401).send({ error: 'wrong_password' });
+  }
+  return { token: signToken() };
+});
+
+app.get('/auth/check', async (request) => {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { authenticated: false };
+  }
+  return { authenticated: verifyToken(authHeader.slice(7)) };
+});
+
+// ---------------------------------------------------------------------------
 // Auth sessions stay in-memory — they're short-lived, pre-login state.
 // ---------------------------------------------------------------------------
 const authSessions = new Map<
@@ -52,20 +143,47 @@ const authSessions = new Map<
 
 const nowIso = () => new Date().toISOString();
 
-const redirectUriFor = (provider: ProviderId): string => {
+const envRedirectUri = (provider: ProviderId): string => {
   switch (provider) {
-    case 'linkedin':
-      return process.env.LINKEDIN_REDIRECT_URI || '';
-    case 'facebook':
-      return process.env.FACEBOOK_REDIRECT_URI || '';
-    case 'instagram':
-      return process.env.INSTAGRAM_REDIRECT_URI || '';
-    case 'x':
-      return process.env.X_REDIRECT_URI || '';
-    default:
-      throw new Error(`unknown provider: ${provider}`);
+    case 'linkedin': return process.env.LINKEDIN_REDIRECT_URI || '';
+    case 'facebook': return process.env.FACEBOOK_REDIRECT_URI || '';
+    case 'instagram': return process.env.INSTAGRAM_REDIRECT_URI || '';
+    case 'x': return process.env.X_REDIRECT_URI || '';
+    default: throw new Error(`unknown provider: ${provider}`);
   }
 };
+
+/** Check DB-stored config first, fall back to .env */
+async function redirectUriFor(provider: ProviderId): Promise<string> {
+  const config = await prisma.providerConfig.findUnique({ where: { provider } });
+  if (config?.redirectUri) return config.redirectUri;
+  return envRedirectUri(provider);
+}
+
+/** Load provider credentials from DB (decrypted), or undefined for .env fallback */
+async function loadProviderCreds(provider: ProviderId): Promise<ProviderCredentials | undefined> {
+  const config = await prisma.providerConfig.findUnique({ where: { provider } });
+  if (!config) return undefined;
+  try {
+    return {
+      clientId: decrypt(config.encryptedClientId),
+      clientSecret: decrypt(config.encryptedClientSecret),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Check whether a provider has credentials configured (DB or env) */
+function envHasCredentials(provider: ProviderId): boolean {
+  switch (provider) {
+    case 'linkedin': return !!(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET);
+    case 'facebook': return !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
+    case 'instagram': return !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
+    case 'x': return !!(process.env.X_API_KEY && process.env.X_API_SECRET);
+    default: return false;
+  }
+}
 
 const safeAdapterName = (provider: ProviderId): string => {
   switch (provider) {
@@ -137,7 +255,7 @@ async function fetchInstagramIdentity(accessToken: string): Promise<{ displayNam
 }
 
 async function fetchXIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
-  const res = await fetch('https://api.twitter.com/2/users/me', {
+  const res = await fetch('https://api.x.com/2/users/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`x_users_me_failed:${res.status}`);
@@ -154,20 +272,104 @@ async function fetchXIdentity(accessToken: string): Promise<{ displayName: strin
 app.get('/health', async () => ({ ok: true, service: 'api' }));
 
 // ---------------------------------------------------------------------------
-// Auth routes (unchanged — auth sessions stay in-memory)
+// Provider configuration — credential management via UI
+// ---------------------------------------------------------------------------
+
+app.get('/providers/status', async () => {
+  const configs = await prisma.providerConfig.findMany();
+  const connections = await prisma.socialConnection.findMany({
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const result: Record<string, unknown> = {};
+  for (const provider of PROVIDERS) {
+    const dbConfig = configs.find((c) => c.provider === provider);
+    const hasEnv = envHasCredentials(provider);
+    const configured = !!dbConfig || hasEnv;
+    const providerConnections = connections
+      .filter((c) => c.provider === provider)
+      .map((c: SocialConnectionRow) => ({
+        id: c.id,
+        displayName: c.displayName,
+        accountRef: (c as Record<string, unknown>).accountRef as string,
+        status: c.status,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      }));
+
+    result[provider] = {
+      configured,
+      source: dbConfig ? 'database' : hasEnv ? 'env' : null,
+      redirectUri: dbConfig?.redirectUri || envRedirectUri(provider) || '',
+      clientIdPrefix: dbConfig ? decrypt(dbConfig.encryptedClientId).slice(0, 6) : null,
+      connections: providerConnections,
+    };
+  }
+
+  return { providers: result };
+});
+
+app.put('/providers/:provider/config', async (request, reply) => {
+  const params = z.object({ provider: z.string() }).parse(request.params);
+  if (!isProviderId(params.provider)) {
+    return reply.code(400).send({ error: 'invalid_provider' });
+  }
+
+  const body = z.object({
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+    redirectUri: z.string().optional(),
+  }).parse(request.body);
+
+  const provider = params.provider;
+  const redirectUri = body.redirectUri || envRedirectUri(provider) || `https://social-plane.teamlewis.co/integrations/${provider}/callback`;
+
+  await prisma.providerConfig.upsert({
+    where: { provider },
+    create: {
+      provider,
+      encryptedClientId: encrypt(body.clientId),
+      encryptedClientSecret: encrypt(body.clientSecret),
+      redirectUri,
+    },
+    update: {
+      encryptedClientId: encrypt(body.clientId),
+      encryptedClientSecret: encrypt(body.clientSecret),
+      redirectUri,
+    },
+  });
+
+  await audit('provider_config', provider, 'credentials_saved', { provider });
+  return { saved: true, provider };
+});
+
+app.delete('/providers/:provider/config', async (request, reply) => {
+  const params = z.object({ provider: z.string() }).parse(request.params);
+  if (!isProviderId(params.provider)) {
+    return reply.code(400).send({ error: 'invalid_provider' });
+  }
+
+  await prisma.providerConfig.deleteMany({ where: { provider: params.provider } });
+  await audit('provider_config', params.provider, 'credentials_deleted', { provider: params.provider });
+  return { deleted: true, provider: params.provider };
+});
+
+// ---------------------------------------------------------------------------
+// Auth routes
 // ---------------------------------------------------------------------------
 app.get('/auth/urls', async () => {
   const result: Record<string, { url?: string; state?: string; error?: string }> = {};
 
   for (const provider of PROVIDERS) {
     try {
-      const redirectUri = redirectUriFor(provider);
+      const redirectUri = await redirectUriFor(provider);
       if (!redirectUri) throw new Error(`missing_redirect_uri:${provider}`);
 
       const state = crypto.randomUUID();
       authSessions.set(state, { provider, redirectUri, createdAtIso: nowIso() });
 
-      const adapter = createAuthAdapter(provider);
+      const creds = await loadProviderCreds(provider);
+      const adapter = createAuthAdapter(provider, creds);
       const url = adapter.getAuthorizationUrl({ state, redirectUri });
       result[provider] = { url, state };
     } catch (err) {
@@ -191,13 +393,14 @@ app.get('/auth/:provider/url', async (request, reply) => {
     .parse(request.query);
 
   const provider = params.provider;
-  const redirectUri = query.redirectUri || redirectUriFor(provider);
+  const redirectUri = query.redirectUri || await redirectUriFor(provider);
   if (!redirectUri) return reply.code(400).send({ error: 'missing_redirect_uri' });
 
   const state = crypto.randomUUID();
   authSessions.set(state, { provider, redirectUri, createdAtIso: nowIso() });
 
-  const adapter = createAuthAdapter(provider);
+  const creds = await loadProviderCreds(provider);
+  const adapter = createAuthAdapter(provider, creds);
   const url = adapter.getAuthorizationUrl({ state, redirectUri });
 
   return { provider, adapter: safeAdapterName(provider), state, url };
@@ -224,7 +427,8 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
 
   const redirectUri = body.redirectUri || session.redirectUri;
 
-  const adapter = createAuthAdapter(params.provider);
+  const creds = await loadProviderCreds(params.provider);
+  const adapter = createAuthAdapter(params.provider, creds);
   let tokenReq: HttpRequest;
   try {
     tokenReq = adapter.buildTokenExchangeRequest({ code: body.code, redirectUri, state: body.state });
@@ -420,6 +624,77 @@ app.post('/connections', async (request, reply) => {
       status: connection.status,
       createdAt: connection.createdAt.toISOString(),
       updatedAt: connection.updatedAt.toISOString(),
+    },
+  };
+});
+
+app.post('/connections/:id/refresh', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+  const connection = await prisma.socialConnection.findUnique({ where: { id: params.id } });
+  if (!connection) return reply.code(404).send({ error: 'connection_not_found' });
+  if (!connection.encryptedRefresh) {
+    return reply.code(400).send({ error: 'no_refresh_token', message: 'This connection has no refresh token stored.' });
+  }
+
+  const creds = await loadProviderCreds(connection.provider as ProviderId);
+  const adapter = createAuthAdapter(connection.provider as ProviderId, creds);
+  if (typeof adapter.buildRefreshRequest !== 'function') {
+    return reply.code(400).send({ error: 'refresh_not_supported', message: `Provider ${connection.provider} does not support token refresh.` });
+  }
+
+  let refreshToken: string;
+  try {
+    refreshToken = decrypt(connection.encryptedRefresh);
+  } catch {
+    return reply.code(500).send({ error: 'refresh_token_decrypt_failed' });
+  }
+
+  const refreshReq = adapter.buildRefreshRequest({ refreshToken });
+  const res = await fetch(refreshReq.url, {
+    method: refreshReq.method,
+    headers: refreshReq.headers,
+    body: refreshReq.method === 'POST' ? refreshReq.body : undefined,
+  });
+
+  const raw = await res.json().catch(() => ({ error: 'non_json_response' }));
+  if (!res.ok) {
+    await prisma.socialConnection.update({
+      where: { id: params.id },
+      data: { status: 'reconnect_required', updatedAt: new Date() },
+    });
+    return reply.code(400).send({ error: 'refresh_failed', status: res.status, raw });
+  }
+
+  const tokens = adapter.normalizeTokenResponse(raw);
+  const newExpiresAt = typeof tokens.expiresInSeconds === 'number'
+    ? new Date(Date.now() + tokens.expiresInSeconds * 1000)
+    : null;
+
+  const updated = await prisma.socialConnection.update({
+    where: { id: params.id },
+    data: {
+      encryptedToken: encrypt(tokens.accessToken),
+      encryptedRefresh: tokens.refreshToken ? encrypt(tokens.refreshToken) : connection.encryptedRefresh,
+      expiresAt: newExpiresAt,
+      status: 'connected',
+      updatedAt: new Date(),
+    },
+  });
+
+  await audit('connection', params.id, 'token_refreshed', { provider: connection.provider });
+
+  return {
+    refreshed: true,
+    connection: {
+      id: updated.id,
+      provider: updated.provider,
+      displayName: updated.displayName,
+      accountRef: updated.accountRef,
+      status: updated.status,
+      expiresAt: newExpiresAt?.toISOString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
     },
   };
 });
@@ -927,7 +1202,8 @@ app.post('/jobs/:jobId/execute', async (request, reply) => {
   if (!connection) return reply.code(400).send({ error: 'connection_not_ready' });
   if (!connection.encryptedToken) return reply.code(400).send({ error: 'connection_not_ready' });
 
-  const authAdapter = createAuthAdapter(connection.provider as ProviderId);
+  const pubCreds = await loadProviderCreds(connection.provider as ProviderId);
+  const authAdapter = createAuthAdapter(connection.provider as ProviderId, pubCreds);
   const publishAdapter = authAdapter as unknown as ProviderPublishAdapter;
 
   if (typeof publishAdapter.buildPublishRequest !== 'function') {
@@ -1146,6 +1422,155 @@ app.post('/slop/check', async (request) => {
     groups: groupSlopMatches(result.matches),
     source: 'stop-slop (rule-based, no AI)',
   };
+});
+
+// ---------------------------------------------------------------------------
+// Operators — user/agent management
+// ---------------------------------------------------------------------------
+app.get('/operators', async () => {
+  const operators = await prisma.operator.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { _count: { select: { apiKeys: true } } },
+  });
+  return {
+    operators: operators.map((o) => ({
+      id: o.id,
+      name: o.name,
+      email: o.email,
+      role: o.role,
+      hasPassword: !!o.password,
+      apiKeyCount: o._count.apiKeys,
+      createdAt: o.createdAt.toISOString(),
+      updatedAt: o.updatedAt.toISOString(),
+    })),
+  };
+});
+
+app.post('/operators', async (request) => {
+  const body = z.object({
+    name: z.string().min(1),
+    role: z.enum(['human', 'agent']).default('human'),
+    email: z.string().email().optional(),
+    password: z.string().min(8).optional(),
+  }).parse(request.body);
+
+  let passwordHash: string | null = null;
+  if (body.password) {
+    // Simple SHA-256 hash for passwords (no bcrypt dep needed)
+    passwordHash = createHash('sha256').update(body.password).digest('hex');
+  }
+
+  const operator = await prisma.operator.create({
+    data: {
+      name: body.name,
+      role: body.role,
+      email: body.email ?? null,
+      password: passwordHash,
+    },
+  });
+
+  await audit('operator', operator.id, 'created', { name: body.name, role: body.role });
+
+  return {
+    operator: {
+      id: operator.id,
+      name: operator.name,
+      email: operator.email,
+      role: operator.role,
+      createdAt: operator.createdAt.toISOString(),
+    },
+  };
+});
+
+app.delete('/operators/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  try {
+    await prisma.operator.delete({ where: { id: params.id } });
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'P2025') return reply.code(404).send({ error: 'operator_not_found' });
+    throw err;
+  }
+  await audit('operator', params.id, 'deleted');
+  return { deleted: true };
+});
+
+// ---------------------------------------------------------------------------
+// API Keys — agent/programmatic access
+// ---------------------------------------------------------------------------
+app.get('/api-keys', async () => {
+  const keys = await prisma.apiKey.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { operator: { select: { name: true, role: true } } },
+  });
+  return {
+    apiKeys: keys.map((k) => ({
+      id: k.id,
+      operatorId: k.operatorId,
+      operatorName: k.operator.name,
+      operatorRole: k.operator.role,
+      name: k.name,
+      prefix: k.prefix,
+      lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
+      expiresAt: k.expiresAt?.toISOString() ?? null,
+      createdAt: k.createdAt.toISOString(),
+    })),
+  };
+});
+
+app.post('/api-keys', async (request) => {
+  const body = z.object({
+    operatorId: z.string().min(1),
+    name: z.string().min(1),
+    expiresAt: z.string().datetime().optional(),
+  }).parse(request.body);
+
+  // Verify operator exists
+  const operator = await prisma.operator.findUnique({ where: { id: body.operatorId } });
+  if (!operator) throw new Error('Operator not found');
+
+  // Generate key: scp_ + 40 random hex chars
+  const rawKey = `scp_${randomBytes(20).toString('hex')}`;
+  const keyHash = createHash('sha256').update(rawKey).digest('hex');
+  const prefix = rawKey.slice(0, 12);
+
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      operatorId: body.operatorId,
+      name: body.name,
+      keyHash,
+      prefix,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+    },
+  });
+
+  await audit('api_key', apiKey.id, 'created', { operatorId: body.operatorId, name: body.name });
+
+  // Return the raw key ONCE — it's never stored or retrievable again
+  return {
+    apiKey: {
+      id: apiKey.id,
+      key: rawKey,
+      prefix,
+      name: apiKey.name,
+      operatorId: apiKey.operatorId,
+      expiresAt: apiKey.expiresAt?.toISOString() ?? null,
+      createdAt: apiKey.createdAt.toISOString(),
+    },
+  };
+});
+
+app.delete('/api-keys/:id', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  try {
+    await prisma.apiKey.delete({ where: { id: params.id } });
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'P2025') return reply.code(404).send({ error: 'api_key_not_found' });
+    throw err;
+  }
+  await audit('api_key', params.id, 'revoked');
+  return { deleted: true };
 });
 
 // ---------------------------------------------------------------------------

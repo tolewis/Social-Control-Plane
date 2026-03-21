@@ -85,7 +85,7 @@ const STRUCTURE_PATTERNS: [string, RegExp][] = [
 
 export function detectSlop(text: string): SlopResult {
   if (!text || text.trim().length === 0) {
-    return { score: 0, matches: [], label: 'Clean' };
+    return { score: 0, rating: 0, matches: [], label: 'Clean' };
   }
 
   const matches: SlopMatch[] = [];

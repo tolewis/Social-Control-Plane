@@ -4,6 +4,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ProviderIcon } from '../_components/icons';
 import { StatusPill } from '../_components/ui';
+import { CustomSelect, type SelectOption } from '../_components/CustomSelect';
+import { DateTimePicker } from '../_components/DateTimePicker';
 import { MediaToolbar } from '../_components/MediaPicker';
 import { useConnections } from '../hooks/useConnections';
 import { createDraft } from '../_lib/api';
@@ -43,6 +45,16 @@ export default function ComposePage() {
   const selectedConnection = useMemo(
     () => connectedAccounts.find((c) => c.id === connectionId),
     [connectedAccounts, connectionId],
+  );
+
+  const connectionOptions: SelectOption[] = useMemo(
+    () => connectedAccounts.map((c) => ({
+      value: c.id,
+      label: c.displayName || c.provider,
+      icon: <ProviderIcon provider={c.provider} size={20} />,
+      meta: c.provider,
+    })),
+    [connectedAccounts],
   );
 
   const charLimit = getCharLimit(selectedConnection?.provider);
@@ -114,27 +126,13 @@ export default function ComposePage() {
         {/* Connection selector */}
         <div className="formGroup">
           <label className="formLabel" htmlFor="connection">Account</label>
-          <select
+          <CustomSelect
             id="connection"
-            className="formSelect"
+            options={connectionOptions}
             value={connectionId}
-            onChange={(e) => setConnectionId(e.target.value)}
-          >
-            <option value="">Select an account...</option>
-            {connectedAccounts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.provider}{c.displayName ? ` — ${c.displayName}` : ''}
-              </option>
-            ))}
-          </select>
-          {selectedConnection && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <ProviderIcon provider={selectedConnection.provider} size={18} />
-              <span className="subtle" style={{ fontSize: '0.88rem' }}>
-                {selectedConnection.displayName || selectedConnection.provider}
-              </span>
-            </div>
-          )}
+            onChange={setConnectionId}
+            placeholder="Select an account..."
+          />
         </div>
 
         {/* Publish mode toggle */}
@@ -203,12 +201,11 @@ export default function ComposePage() {
         {/* Schedule */}
         <div className="formGroup">
           <label className="formLabel" htmlFor="schedule">Schedule (optional)</label>
-          <input
+          <DateTimePicker
             id="schedule"
-            type="datetime-local"
-            className="formInput"
             value={scheduledFor}
-            onChange={(e) => setScheduledFor(e.target.value)}
+            onChange={setScheduledFor}
+            placeholder="Pick date & time"
           />
         </div>
 

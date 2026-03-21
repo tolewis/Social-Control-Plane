@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { uploadMedia, fetchMedia, deleteMedia } from '../_lib/api';
 import type { MediaRecord } from '../_lib/api';
 
-const API_PORT = '4001';
 function mediaUrl(path: string): string {
-  return `http://${typeof document !== 'undefined' ? document.location.hostname : 'localhost'}:${API_PORT}${path}`;
+  if (typeof document === 'undefined') return `http://localhost:4001${path}`;
+  const host = document.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return `http://${host}:4001${path}`;
+  }
+  return `${document.location.origin}/backend${path}`;
 }
 
 /* ------------------------------------------------------------------ */

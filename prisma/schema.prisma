@@ -19,10 +19,27 @@ enum PublishJobStatus {
 
 model Operator {
   id        String   @id @default(cuid())
-  email     String   @unique
+  email     String?  @unique
   name      String
+  role      String   @default("human") // "human" | "agent"
+  password  String?  // bcrypt hash, nullable for API-key-only agents
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  apiKeys   ApiKey[]
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  operatorId String
+  operator   Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String
+  prefix     String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([keyHash])
 }
 
 model SocialConnection {
@@ -99,4 +116,14 @@ model IdempotencyKey {
   requestHash String
   responseJson Json?
   createdAt   DateTime @default(now())
+}
+
+model ProviderConfig {
+  id                    String   @id @default(cuid())
+  provider              String   @unique
+  encryptedClientId     String
+  encryptedClientSecret String
+  redirectUri           String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }

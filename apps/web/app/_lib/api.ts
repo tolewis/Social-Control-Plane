@@ -1,14 +1,55 @@
 /**
- * API client for Social Plane Fastify backend.
+ * API client for Social Control Plane Fastify backend.
  *
- * Base URL reads from NEXT_PUBLIC_API_URL env var; defaults to http://localhost:4001.
- * All functions throw on non-2xx responses.
+ * In production, API calls are proxied through Next.js rewrites at /backend/*.
+ * In development (localhost), falls back to direct port 4001.
  */
 
-const API_PORT = '4001';
-
 function base(): string {
-  return `http://${document.location.hostname}:${API_PORT}`;
+  if (typeof window === 'undefined') return 'http://localhost:4001';
+  const host = document.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return `http://${host}:4001`;
+  }
+  // Production: use same-origin rewrite path
+  return `${document.location.origin}/backend`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Auth token helpers                                                 */
+/* ------------------------------------------------------------------ */
+
+const TOKEN_KEY = 'scp-token';
+
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+  document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${30 * 86400}; SameSite=Lax`;
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  document.cookie = `${TOKEN_KEY}=; path=/; max-age=0`;
+}
+
+export async function login(password: string): Promise<{ token: string }> {
+  const url = `${base()}/auth/login`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(res.status === 401 ? 'Wrong password' : `Login failed: ${body}`);
+  }
+  const data = await res.json() as { token: string };
+  setToken(data.token);
+  return data;
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,10 +119,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body) {
     headers['Content-Type'] ??= 'application/json';
   }
+  // Attach auth token
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const res = await fetch(url, {
     ...init,
     headers,
   });
+
+  if (res.status === 401 && typeof window !== 'undefined') {
+    clearToken();
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -127,6 +179,12 @@ export function createConnection(data: {
 
 export function deleteConnection(id: string) {
   return apiFetch<void>(`/connections/${id}`, { method: 'DELETE' });
+}
+
+export function refreshConnection(id: string) {
+  return apiFetch<{ refreshed: boolean; connection: ConnectionRecord }>(`/connections/${id}/refresh`, {
+    method: 'POST',
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -198,6 +256,33 @@ export function fetchJobs() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Provider configuration                                            */
+/* ------------------------------------------------------------------ */
+
+export interface ProviderStatusEntry {
+  configured: boolean;
+  source: 'database' | 'env' | null;
+  redirectUri: string;
+  clientIdPrefix: string | null;
+  connections: ConnectionRecord[];
+}
+
+export function fetchProviderStatus() {
+  return apiFetch<{ providers: Record<ProviderId, ProviderStatusEntry> }>('/providers/status');
+}
+
+export function saveProviderConfig(provider: ProviderId, data: { clientId: string; clientSecret: string }) {
+  return apiFetch<{ saved: boolean }>(`/providers/${provider}/config`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteProviderConfig(provider: ProviderId) {
+  return apiFetch<{ deleted: boolean }>(`/providers/${provider}/config`, { method: 'DELETE' });
+}
+
+/* ------------------------------------------------------------------ */
 /*  Auth                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -218,6 +303,72 @@ export function exchangeToken(provider: ProviderId, code: string, state: string)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Operators                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface OperatorRecord {
+  id: string;
+  name: string;
+  email: string | null;
+  role: 'human' | 'agent';
+  hasPassword: boolean;
+  apiKeyCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function fetchOperators() {
+  return apiFetch<{ operators: OperatorRecord[] }>('/operators');
+}
+
+export function createOperator(data: { name: string; role: 'human' | 'agent'; email?: string; password?: string }) {
+  return apiFetch<{ operator: OperatorRecord }>('/operators', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteOperator(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/operators/${id}`, { method: 'DELETE' });
+}
+
+/* ------------------------------------------------------------------ */
+/*  API Keys                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface ApiKeyRecord {
+  id: string;
+  operatorId: string;
+  operatorName: string;
+  operatorRole: string;
+  name: string;
+  prefix: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface ApiKeyCreateResult {
+  apiKey: ApiKeyRecord;
+  rawKey: string;
+}
+
+export function fetchApiKeys() {
+  return apiFetch<{ apiKeys: ApiKeyRecord[] }>('/api-keys');
+}
+
+export function createApiKey(data: { operatorId: string; name: string; expiresAt?: string }) {
+  return apiFetch<ApiKeyCreateResult>('/api-keys', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteApiKey(id: string) {
+  return apiFetch<{ deleted: boolean }>(`/api-keys/${id}`, { method: 'DELETE' });
+}
+
+/* ------------------------------------------------------------------ */
 /*  Media                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -226,7 +377,10 @@ export async function uploadMedia(file: File): Promise<{ media: MediaRecord }> {
   form.append('file', file);
 
   const url = `${base()}/media/upload`;
-  const res = await fetch(url, { method: 'POST', body: form });
+  const uploadHeaders: Record<string, string> = {};
+  const tk = getToken();
+  if (tk) uploadHeaders['Authorization'] = `Bearer ${tk}`;
+  const res = await fetch(url, { method: 'POST', body: form, headers: uploadHeaders });
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');

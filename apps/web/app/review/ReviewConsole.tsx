@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { StatusPill, type Tone } from '../_components/ui';
 import { ProviderIcon, IconClock } from '../_components/icons';
 import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
+import { DateTimePicker } from '../_components/DateTimePicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { publishDraft, deleteDraft, updateDraft } from '../_lib/api';
@@ -239,7 +240,7 @@ export function ReviewConsole() {
                   <IconClock width={14} height={14} /> Schedule for
                 </span>
               </label>
-              <input id={`sched-${draft.id}`} type="datetime-local" className="formInput" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} />
+              <DateTimePicker id={`sched-${draft.id}`} value={scheduleValue} onChange={setScheduleValue} />
             </div>
           </div>
         ) : (
@@ -383,7 +384,7 @@ export function ReviewConsole() {
                     <IconClock width={14} height={14} /> Schedule for
                   </span>
                 </label>
-                <input id="reviewSchedule" type="datetime-local" className="formInput" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} style={{ maxWidth: 300 }} />
+                <DateTimePicker id="reviewSchedule" value={scheduleValue} onChange={setScheduleValue} style={{ maxWidth: 300 }} />
               </div>
             </div>
           ) : (
