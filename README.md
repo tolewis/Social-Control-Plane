@@ -1,12 +1,14 @@
 # Social Control Plane
 
-Status: MVP scaffold built
+Status: Pre-1.0 — integration onboarding complete, end-to-end publish MVP next
+Version: 0.9 (1.0 = successful end-to-end social post from the service)
 Owner: Tim + Katya
 Created: 2026-03-16
 Mode: Internal tool first
 Desktop + mobile first
-Secrets: local encrypted first
+Secrets: DB-encrypted (AES-256-GCM) with .env fallback
 Style direction: Contractor-AI-inspired layout/feel (not colors)
+Live at: https://social-plane.teamlewis.co (auth-gated)
 
 ## Goal
 Build an agent-safe social publishing platform to replace the fragile parts of Postiz.
@@ -56,27 +58,47 @@ The right replacement is **API-first, queue-first, credentials-first**. The hard
 Do **not** build a Postiz clone monolith. Build a narrower, tougher product around X, LinkedIn, Facebook, and Instagram first.
 
 
-## Repo status
-A runnable MVP scaffold now exists with:
-- `apps/web` — Next.js responsive operator UI shell
-- `apps/api` — Fastify API skeleton
-- `apps/worker` — worker/queue skeleton
+## Architecture
+- `apps/web` — Next.js 16 responsive operator UI (standalone production build)
+- `apps/api` — Fastify API with HMAC auth, OAuth flows, encrypted credential storage
+- `apps/worker` — BullMQ publish worker with token refresh
 - `packages/shared` — shared types/contracts
-- `packages/providers` — provider auth adapter foundation
-- `prisma/schema.prisma` — initial data model
+- `packages/providers` — provider auth adapters (X, LinkedIn, Facebook, Instagram) with credential injection
+- `prisma/schema.prisma` — Postgres data model (Operator, ApiKey, Connection, Draft, PublishJob, Media, ProviderConfig)
 - `docker-compose.dev.yml` — Postgres + Redis for local dev
 
-## Quick start
-1. Copy `.env.example` to `.env`
-2. Start local infra:
-   - `docker compose -f docker-compose.dev.yml up -d`
-3. Install deps:
-   - `corepack pnpm install`
-4. Run apps:
-   - `corepack pnpm dev:web`
-   - `corepack pnpm dev:api`
-   - `corepack pnpm dev:worker`
+## Production deployment
+Running on 192.168.0.114 via PM2 (3 services: scp-api, scp-web, scp-worker).
+Reverse-proxied through Nginx Proxy Manager with Let's Encrypt cert.
 
-## Current MVP reality
-This is a strong scaffold, not a finished product yet.
-The first real end-to-end slice should be LinkedIn auth + draft -> review -> queue -> publish receipt.
+## What's built (as of 2026-03-21)
+- Auth gate (HMAC bearer tokens, login page, middleware)
+- OAuth flows for all 4 providers (auth URL generation, callback handling, token storage)
+- Encrypted credential storage via Settings UI (AES-256-GCM, per-provider)
+- Integration onboarding redesign: 3-state provider cards (unconfigured → configured → connected)
+- Connections page: status-aware with deep links to setup
+- Draft/schedule/publish lifecycle with 4 publish modes (draft-human, draft-agent, direct-human, direct-agent)
+- Review console for human-in-the-loop approval
+- Queue and calendar views
+- Media upload
+- Operator and API key management
+- Full mobile-responsive layout
+- Help/docs tab with per-provider setup guides and API reference
+
+## What's left for 1.0
+- Enter real X credentials via Settings UI and complete OAuth connect
+- Publish a real social post end-to-end through the platform
+- Verify the full lifecycle: draft → queue → publish → receipt
+
+## Positioning calibration (2026-03-21)
+
+Current plain-English message:
+
+**Social Control Plane is an agent-first social publishing system.**
+
+It exists for the workflow most social tools still handle badly:
+- bulk drafting by agents/scripts
+- API-driven scheduling/publishing
+- human approval before something actually goes live
+
+That is the useful frame. Not "another scheduler," not a vague Postiz replacement, and not an AI-content toy.
