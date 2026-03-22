@@ -42,6 +42,7 @@ Updated: 2026-03-21
 - [x] Wire UI to real API endpoints (replace mock data)
 - [x] Production build + PM2 deployment + HTTPS reverse proxy
 - [x] Integration onboarding redesign — per-provider setup cards, encrypted credential storage via UI, status-aware connections page
+- [x] Fix PM2 crash loop — rewrote ecosystem.config.cjs to use tsx directly as interpreter (no bash wrappers), .env parsed in config
 
 ## Phase 4 — v1.0 ship
 - [x] Clarify product positioning around **agent-first** bulk drafts + API publishing + human approval
@@ -58,5 +59,6 @@ Updated: 2026-03-21
 - [ ] Add receipt persistence / delivery confirmation after publish
 - [ ] Implement queue circuit breaker
 - [ ] Fix pre-existing `slop.ts` typecheck error (`SlopResult.rating` missing)
+- [ ] Re-enable PM2 systemd startup: `sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tlewis --hp /home/tlewis`
 - [ ] Add bulk scheduling / rescheduling support
 - [ ] AI-slop detection API
