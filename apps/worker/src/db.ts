@@ -61,12 +61,29 @@ export interface PublishJobRow {
   updatedAt: Date;
 }
 
+export interface MediaRow {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  width: number | null;
+  height: number | null;
+  alt: string | null;
+  createdAt: Date;
+}
+
 // -------------------------------------------------------------------------
 // Minimal Prisma-compatible delegate interfaces
 // -------------------------------------------------------------------------
 
 interface FindUniqueArgs<T> {
   where: { id: string };
+}
+
+interface FindManyArgs {
+  where: Record<string, unknown>;
 }
 
 interface UpdateManyArgs {
@@ -76,6 +93,7 @@ interface UpdateManyArgs {
 
 interface ModelDelegate<T> {
   findUnique(args: FindUniqueArgs<T>): Promise<T | null>;
+  findMany(args: FindManyArgs): Promise<T[]>;
   updateMany(args: UpdateManyArgs): Promise<{ count: number }>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<T>;
 }
@@ -84,6 +102,7 @@ export interface DbClient {
   socialConnection: ModelDelegate<SocialConnectionRow>;
   draft: ModelDelegate<DraftRow>;
   publishJob: ModelDelegate<PublishJobRow>;
+  media: ModelDelegate<MediaRow>;
   $disconnect(): Promise<void>;
 }
 

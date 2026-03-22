@@ -18,6 +18,21 @@ interface HttpRequest {
   body?: string;
 }
 
+interface MediaAttachment {
+  id: string;
+  mimeType: string;
+  url: string;
+  storagePath: string;
+  sizeBytes: number;
+  originalName: string;
+}
+
+interface PublishResult {
+  ok: boolean;
+  status: number;
+  body: unknown;
+}
+
 interface ProviderPublishAdapter {
   buildPublishRequest(input: {
     accessToken: string;
@@ -25,6 +40,14 @@ interface ProviderPublishAdapter {
     text: string;
     idempotencyKey: string;
   }): HttpRequest;
+
+  publish?(input: {
+    accessToken: string;
+    accountRef: string;
+    text: string;
+    idempotencyKey: string;
+    media?: MediaAttachment[];
+  }): Promise<PublishResult>;
 }
 
 interface ProviderAuthAdapter {
@@ -255,36 +278,78 @@ export async function handleDraftPublish(
 
   await job.updateProgress({ step: 'token_ready' });
 
-  // 5. Build and execute publish request
-  const idemKey = idempotencyKey ?? job.id ?? crypto.randomUUID();
-
-  let publishReq: HttpRequest;
-  try {
-    publishReq = adapter.buildPublishRequest({
-      accessToken: tokenResult.accessToken,
-      accountRef: connection.accountRef,
-      text: draft.content,
-      idempotencyKey: idemKey,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.error('draft.publish.build_request_error', { jobId: job.id, err: msg });
-    await markFailed(db, draftId, connectionId, `build_request_error: ${msg}`);
-    return { ok: true };
+  // 5. Resolve media attachments from draft.mediaJson
+  const mediaIds = Array.isArray(draft.mediaJson) ? (draft.mediaJson as string[]) : [];
+  let mediaAttachments: MediaAttachment[] = [];
+  if (mediaIds.length > 0) {
+    try {
+      const mediaRecords = await db.media.findMany({
+        where: { id: { in: mediaIds } },
+      });
+      const publicBase = (process.env.PUBLIC_URL || process.env.APP_BASE_URL || 'http://localhost:4001').replace(/\/$/, '');
+      mediaAttachments = mediaRecords.map((m) => ({
+        id: m.id,
+        mimeType: m.mimeType,
+        url: `${publicBase}/uploads/${m.filename}`,
+        storagePath: m.storagePath,
+        sizeBytes: m.sizeBytes,
+        originalName: m.originalName,
+      }));
+      log.info('draft.publish.media_loaded', { jobId: job.id, count: mediaAttachments.length });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn('draft.publish.media_load_error', { jobId: job.id, err: msg });
+      // Continue — publish without media rather than failing
+    }
   }
 
   await job.updateProgress({ step: 'publishing' });
 
-  // 6. Execute HTTP request
+  // 6. Publish: use adapter.publish() for media, buildPublishRequest for text-only
+  const idemKey = idempotencyKey ?? job.id ?? crypto.randomUUID();
   let result: { ok: boolean; status: number; body: unknown };
-  try {
-    result = await executeRequest(publishReq);
-  } catch (err) {
-    // Network error / ambiguous -- mark FAILED
-    const msg = err instanceof Error ? err.message : String(err);
-    log.error('draft.publish.network_error', { jobId: job.id, err: msg });
-    await markFailed(db, draftId, connectionId, `network_error: ${msg}`);
-    return { ok: true };
+
+  if (mediaAttachments.length > 0 && typeof adapter.publish === 'function') {
+    // Media publish — adapter handles multi-step upload + post internally
+    try {
+      result = await adapter.publish({
+        accessToken: tokenResult.accessToken,
+        accountRef: connection.accountRef,
+        text: draft.content,
+        idempotencyKey: idemKey,
+        media: mediaAttachments,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error('draft.publish.media_publish_error', { jobId: job.id, err: msg });
+      await markFailed(db, draftId, connectionId, `media_publish_error: ${msg}`);
+      return { ok: true };
+    }
+  } else {
+    // Text-only publish — existing path
+    let publishReq: HttpRequest;
+    try {
+      publishReq = adapter.buildPublishRequest({
+        accessToken: tokenResult.accessToken,
+        accountRef: connection.accountRef,
+        text: draft.content,
+        idempotencyKey: idemKey,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error('draft.publish.build_request_error', { jobId: job.id, err: msg });
+      await markFailed(db, draftId, connectionId, `build_request_error: ${msg}`);
+      return { ok: true };
+    }
+
+    try {
+      result = await executeRequest(publishReq);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error('draft.publish.network_error', { jobId: job.id, err: msg });
+      await markFailed(db, draftId, connectionId, `network_error: ${msg}`);
+      return { ok: true };
+    }
   }
 
   // 7. Handle response

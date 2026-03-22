@@ -45,6 +45,35 @@ export class NotImplementedError extends Error {
   override name = 'NotImplementedError';
 }
 
+/* ------------------------------------------------------------------ */
+/*  Media publishing types                                             */
+/* ------------------------------------------------------------------ */
+
+export interface MediaAttachment {
+  id: string;
+  mimeType: string;
+  /** Public URL for platforms that fetch media server-side (e.g. Instagram). */
+  url: string;
+  /** Absolute local filesystem path for binary upload to platforms. */
+  storagePath: string;
+  sizeBytes: number;
+  originalName: string;
+}
+
+export interface PublishInput {
+  accessToken: string;
+  accountRef: string;
+  text: string;
+  idempotencyKey: string;
+  media?: MediaAttachment[];
+}
+
+export interface PublishResult {
+  ok: boolean;
+  status: number;
+  body: unknown;
+}
+
 export const assertUnreachable = (x: never): never => {
   throw new Error(`Unreachable: ${String(x)}`);
 };
@@ -111,10 +140,8 @@ export interface ProviderPublishAdapter {
   provider: ProviderId;
 
   /**
-   * Build a request to publish content.
-   *
-   * NOTE: many providers require multi-step flows (upload media, then create post).
-   * This method is for the "simple text post" happy-path; advanced flows can be added later.
+   * Build a request to publish a text-only post.
+   * The worker executes this request via fetch.
    */
   buildPublishRequest(input: {
     accessToken: string;
@@ -122,4 +149,11 @@ export interface ProviderPublishAdapter {
     text: string;
     idempotencyKey: string;
   }): HttpRequest;
+
+  /**
+   * Publish content with media attachments.
+   * Handles the full multi-step flow (upload media → create post) internally.
+   * If not implemented, the adapter only supports text-only posts.
+   */
+  publish?(input: PublishInput): Promise<PublishResult>;
 }
