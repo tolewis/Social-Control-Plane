@@ -1,7 +1,7 @@
 # Social Control Plane — TASKS
 
-Status: Pre-1.0 — integration onboarding shipped, end-to-end publish MVP next
-Updated: 2026-03-21
+Status: Pre-1.0 — media publishing shipped, real FB publish verified
+Updated: 2026-03-22
 
 ## Phase 0 — Direction
 - [x] Confirm we should explore replacing Postiz rather than continuing to patch around it
@@ -43,17 +43,18 @@ Updated: 2026-03-21
 - [x] Production build + PM2 deployment + HTTPS reverse proxy
 - [x] Integration onboarding redesign — per-provider setup cards, encrypted credential storage via UI, status-aware connections page
 - [x] Fix PM2 crash loop — rewrote ecosystem.config.cjs to use tsx directly as interpreter (no bash wrappers), .env parsed in config
+- [x] Media publishing — all 4 platform adapters (FB, IG, X, LinkedIn) implement publish() with multi-step media upload flows. Worker loads media from DB, adapter uploads binary and creates post. Verified end-to-end on Facebook (receipt: 1669244329963758_1997534617736331).
 
 ## Phase 4 — v1.0 ship
 - [x] Clarify product positioning around **agent-first** bulk drafts + API publishing + human approval
+- [x] Publish a real social post end-to-end (draft → queue → publish → receipt) — Facebook photo post verified 2026-03-22
 - [ ] Enter X credentials via Settings UI and complete real OAuth connect
-- [ ] Publish a real social post end-to-end (draft → queue → publish → receipt)
 - [ ] Verify token refresh works in production
-- [ ] Connect at least one more provider (LinkedIn or Facebook)
+- [ ] Connect at least one more provider (LinkedIn — already has credentials)
 - [ ] Tag v1.0
 
 ## Post-1.0 backlog
-- [ ] Smoke test a real X post with media attachment from Social Control Plane using a real screenshot / proof asset
+- [ ] Smoke test a real X post with media attachment
 - [ ] Capture one clean real product screenshot showing draft -> approval -> scheduled flow for docs and launch content
 - [ ] Implement agent API rate limiting per account
 - [ ] Add receipt persistence / delivery confirmation after publish
