@@ -270,29 +270,33 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
               {actionLoading === 'connect' ? 'Connecting...' : `Connect ${meta.displayName}`}
             </button>
 
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setEditing(!editing)}
+            >
+              {entry?.source === 'env' ? 'Override Credentials' : 'Edit Credentials'}
+            </button>
+
             {entry?.source === 'database' && (
-              <>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => setEditing(!editing)}
-                >
-                  Edit Credentials
-                </button>
-                <button
-                  type="button"
-                  className="btn destructive"
-                  disabled={actionLoading === 'delete-config'}
-                  onClick={handleDeleteConfig}
-                >
-                  Remove
-                </button>
-              </>
+              <button
+                type="button"
+                className="btn destructive"
+                disabled={actionLoading === 'delete-config'}
+                onClick={handleDeleteConfig}
+              >
+                Remove
+              </button>
             )}
           </div>
 
           {editing && (
             <div className="credentialForm" style={{ marginTop: 12 }}>
+              {entry?.source === 'env' && (
+                <div className="subtle" style={{ fontSize: '0.85rem', marginBottom: 8 }}>
+                  Current credentials come from .env. Saving here will override them (database takes precedence).
+                </div>
+              )}
               <div className="formGroup">
                 <label className="formLabel">{meta.credentialLabels.clientId}</label>
                 <input
@@ -300,7 +304,7 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
                   className="formInput"
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
-                  placeholder="New value"
+                  placeholder={`Paste your ${meta.credentialLabels.clientId}`}
                   autoComplete="off"
                 />
               </div>
@@ -311,7 +315,7 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
                   className="formInput"
                   value={clientSecret}
                   onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="New value"
+                  placeholder={`Paste your ${meta.credentialLabels.clientSecret}`}
                   autoComplete="off"
                 />
               </div>
@@ -322,7 +326,7 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
                 disabled={saving || !clientId.trim() || !clientSecret.trim()}
                 onClick={handleSave}
               >
-                {saving ? 'Saving...' : 'Update Credentials'}
+                {saving ? 'Saving...' : entry?.source === 'env' ? 'Save Override' : 'Update Credentials'}
               </button>
             </div>
           )}

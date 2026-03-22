@@ -1574,7 +1574,53 @@ app.delete('/api-keys/:id', async (request, reply) => {
 });
 
 // ---------------------------------------------------------------------------
+// Zod validation error handler — return 400, not 500
+// ---------------------------------------------------------------------------
+app.setErrorHandler((error, _request, reply) => {
+  if (error instanceof z.ZodError) {
+    return reply.code(400).send({
+      error: 'validation_error',
+      issues: error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+    });
+  }
+  // Let Fastify handle everything else (logs + 500)
+  reply.send(error);
+});
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+const shutdown = async (signal: string) => {
+  app.log.info(`Received ${signal}, shutting down gracefully…`);
+  try {
+    await app.close();
+  } catch (err) {
+    app.log.error({ err }, 'Error during shutdown');
+  }
+  process.exit(0);
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// ---------------------------------------------------------------------------
+// Global safety nets — log before dying
+// ---------------------------------------------------------------------------
+process.on('unhandledRejection', (reason) => {
+  app.log.fatal({ err: reason }, 'Unhandled promise rejection — crashing');
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  app.log.fatal({ err }, 'Uncaught exception — crashing');
+  process.exit(1);
+});
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);
-app.listen({ port, host: '0.0.0.0' });
+try {
+  await app.listen({ port, host: '0.0.0.0' });
+} catch (err) {
+  app.log.fatal({ err }, `Failed to bind port ${port}`);
+  process.exit(1);
+}
