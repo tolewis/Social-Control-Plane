@@ -60,6 +60,6 @@ Updated: 2026-03-22
 - [ ] Add receipt persistence / delivery confirmation after publish
 - [ ] Implement queue circuit breaker
 - [ ] Fix pre-existing `slop.ts` typecheck error (`SlopResult.rating` missing)
-- [ ] Re-enable PM2 systemd startup: `sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tlewis --hp /home/tlewis`
+- [x] Re-enable PM2 systemd startup: `sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tlewis --hp /home/tlewis` (enabled 2026-03-23)
 - [ ] Add bulk scheduling / rescheduling support
 - [ ] AI-slop detection API
