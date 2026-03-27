@@ -290,9 +290,11 @@ app.get('/providers/status', async () => {
       .filter((c) => c.provider === provider)
       .map((c: SocialConnectionRow) => ({
         id: c.id,
+        provider: c.provider,
         displayName: c.displayName,
         accountRef: (c as Record<string, unknown>).accountRef as string,
         status: c.status,
+        expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
       }));
