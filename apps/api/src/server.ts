@@ -1619,11 +1619,87 @@ process.on('uncaughtException', (err) => {
 });
 
 // ---------------------------------------------------------------------------
+// Proactive token refresh — runs every 30 minutes
+// Refreshes any connections with tokens expiring within 60 minutes
+// ---------------------------------------------------------------------------
+const TOKEN_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 min
+const TOKEN_REFRESH_WINDOW_MS = 60 * 60 * 1000; // refresh if expiring within 60 min
+
+async function proactiveTokenRefresh(): Promise<void> {
+  const threshold = new Date(Date.now() + TOKEN_REFRESH_WINDOW_MS);
+  const expiring = await prisma.socialConnection.findMany({
+    where: {
+      expiresAt: { lt: threshold },
+      encryptedRefresh: { not: null },
+      status: { not: 'reconnect_required' },
+    },
+  });
+
+  for (const conn of expiring) {
+    try {
+      const creds = await loadProviderCreds(conn.provider as ProviderId);
+      const adapter = createAuthAdapter(conn.provider as ProviderId, creds);
+      if (typeof adapter.buildRefreshRequest !== 'function') continue;
+
+      const refreshToken = decrypt(conn.encryptedRefresh!);
+      const refreshReq = adapter.buildRefreshRequest({ refreshToken });
+      const res = await fetch(refreshReq.url, {
+        method: refreshReq.method,
+        headers: refreshReq.headers,
+        body: refreshReq.method === 'POST' ? refreshReq.body : undefined,
+      });
+
+      if (!res.ok) {
+        const raw = await res.json().catch(() => ({}));
+        app.log.warn({ provider: conn.provider, connectionId: conn.id, status: res.status, raw }, 'proactive_refresh_failed');
+        // If refresh token is revoked/invalid, mark for re-auth
+        if (res.status === 401 || res.status === 400) {
+          await prisma.socialConnection.update({
+            where: { id: conn.id },
+            data: { status: 'reconnect_required', updatedAt: new Date() },
+          });
+        }
+        continue;
+      }
+
+      const raw = await res.json();
+      const tokens = adapter.normalizeTokenResponse(raw);
+      const newExpiresAt = typeof tokens.expiresInSeconds === 'number'
+        ? new Date(Date.now() + tokens.expiresInSeconds * 1000)
+        : null;
+
+      await prisma.socialConnection.update({
+        where: { id: conn.id },
+        data: {
+          encryptedToken: encrypt(tokens.accessToken),
+          encryptedRefresh: tokens.refreshToken ? encrypt(tokens.refreshToken) : conn.encryptedRefresh,
+          expiresAt: newExpiresAt,
+          status: 'connected',
+          updatedAt: new Date(),
+        },
+      });
+
+      await audit('connection', conn.id, 'token_auto_refreshed', { provider: conn.provider });
+      app.log.info({ provider: conn.provider, connectionId: conn.id, newExpiresAt }, 'proactive_refresh_ok');
+    } catch (err) {
+      app.log.error({ provider: conn.provider, connectionId: conn.id, err }, 'proactive_refresh_error');
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);
 try {
   await app.listen({ port, host: '0.0.0.0' });
+
+  // Start proactive refresh loop after server is ready
+  proactiveTokenRefresh().catch((err) => app.log.error({ err }, 'initial_proactive_refresh_failed'));
+  setInterval(() => {
+    proactiveTokenRefresh().catch((err) => app.log.error({ err }, 'proactive_refresh_failed'));
+  }, TOKEN_REFRESH_INTERVAL_MS);
+  app.log.info({ intervalMs: TOKEN_REFRESH_INTERVAL_MS, windowMs: TOKEN_REFRESH_WINDOW_MS }, 'proactive_token_refresh_enabled');
 } catch (err) {
   app.log.fatal({ err }, `Failed to bind port ${port}`);
   process.exit(1);
