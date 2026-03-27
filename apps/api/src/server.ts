@@ -81,6 +81,8 @@ app.addHook('onRequest', async (request, reply) => {
 
   const urlPath = request.url.split('?')[0];
   if (PUBLIC_PATHS.has(urlPath)) return;
+  // OAuth exchange endpoint — validated by state parameter, needs to work from popup without session cookie
+  if (urlPath.match(/^\/auth\/[^/]+\/exchange$/)) return;
   // Allow static uploads without auth
   if (urlPath.startsWith('/uploads/')) return;
 
