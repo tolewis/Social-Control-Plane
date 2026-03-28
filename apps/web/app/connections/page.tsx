@@ -5,9 +5,12 @@ import Link from 'next/link';
 import { StatusPill } from '../_components/ui';
 import { ProviderIcon, IconRefresh } from '../_components/icons';
 import { useProviderStatus } from '../hooks/useProviderStatus';
-import { deleteConnection, getAuthUrl } from '../_lib/api';
+import { deleteConnection, getAuthUrl, connectWithToken } from '../_lib/api';
 import type { ConnectionRecord, ProviderId } from '../_lib/api';
 import { PROVIDER_META, PROVIDER_ORDER } from '../_lib/providerMeta';
+
+// Providers that use a static Page/Bot token instead of OAuth popup
+const TOKEN_AUTH_PROVIDERS = new Set<ProviderId>(['facebook', 'instagram']);
 
 // Providers with short-lived tokens that auto-refresh (don't alarm the user)
 const AUTO_REFRESH_PROVIDERS = new Set(['x']);
@@ -56,10 +59,20 @@ function pillForStatus(status: ConnectionRecord['status']) {
   }
 }
 
+type TokenModalState = {
+  provider: ProviderId;
+  accessToken: string;
+  pageId: string;
+  instagramAccountId: string;
+  displayName: string;
+} | null;
+
 export default function ConnectionsPage() {
   const { providers, loading, error, refetch } = useProviderStatus();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [tokenModal, setTokenModal] = useState<TokenModalState>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   // Listen for OAuth completions from the callback tab
   useEffect(() => {
@@ -100,6 +113,12 @@ export default function ConnectionsPage() {
   }, [providers]);
 
   const handleConnect = useCallback(async (provider: ProviderId) => {
+    // Token-auth providers use a modal instead of OAuth popup
+    if (TOKEN_AUTH_PROVIDERS.has(provider)) {
+      setTokenModal({ provider, accessToken: '', pageId: '', instagramAccountId: '', displayName: '' });
+      setTokenError(null);
+      return;
+    }
     setActionLoading(provider);
     setActionError(null);
     const popup = window.open('about:blank', '_blank');
@@ -117,6 +136,26 @@ export default function ConnectionsPage() {
       setActionLoading(null);
     }
   }, []);
+
+  const handleTokenConnect = useCallback(async () => {
+    if (!tokenModal) return;
+    setActionLoading('token-connect');
+    setTokenError(null);
+    try {
+      await connectWithToken(tokenModal.provider, {
+        accessToken: tokenModal.accessToken,
+        pageId: tokenModal.pageId || undefined,
+        instagramAccountId: tokenModal.instagramAccountId || undefined,
+        displayName: tokenModal.displayName || undefined,
+      });
+      setTokenModal(null);
+      await refetch();
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : 'Connection failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [tokenModal, refetch]);
 
   const handleDisconnect = useCallback(async (id: string) => {
     setActionLoading(id);
@@ -358,6 +397,96 @@ export default function ConnectionsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Token connect modal — for Facebook / Instagram */}
+      {tokenModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div className="card wide" style={{ maxWidth: 480, width: '100%', padding: 28 }}>
+            <h2 style={{ marginBottom: 4 }}>
+              Connect {PROVIDER_META[tokenModal.provider]?.displayName}
+            </h2>
+            <p className="subtle" style={{ marginBottom: 20, fontSize: '0.9rem' }}>
+              Paste your {tokenModal.provider === 'instagram' ? 'User' : 'User or Page'} Access Token from the{' '}
+              <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer">Meta Graph API Explorer</a>.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Access Token *</span>
+                <textarea
+                  rows={3}
+                  placeholder="EAAx..."
+                  value={tokenModal.accessToken}
+                  onChange={(e) => setTokenModal({ ...tokenModal, accessToken: e.target.value })}
+                  style={{ fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }}
+                />
+              </label>
+
+              {tokenModal.provider === 'facebook' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Facebook Page ID (optional)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123456789012345"
+                    value={tokenModal.pageId}
+                    onChange={(e) => setTokenModal({ ...tokenModal, pageId: e.target.value })}
+                  />
+                  <span className="subtle" style={{ fontSize: '0.78rem' }}>If not provided, we'll auto-detect from your first connected Page.</span>
+                </label>
+              )}
+
+              {tokenModal.provider === 'instagram' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instagram Business Account ID (optional)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 17841400000000000"
+                    value={tokenModal.instagramAccountId}
+                    onChange={(e) => setTokenModal({ ...tokenModal, instagramAccountId: e.target.value })}
+                  />
+                  <span className="subtle" style={{ fontSize: '0.78rem' }}>Found under the Facebook Page's Instagram settings.</span>
+                </label>
+              )}
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Display name (optional)</span>
+                <input
+                  type="text"
+                  placeholder={tokenModal.provider === 'instagram' ? 'e.g. @thetackleroom' : 'e.g. The Tackle Room'}
+                  value={tokenModal.displayName}
+                  onChange={(e) => setTokenModal({ ...tokenModal, displayName: e.target.value })}
+                />
+              </label>
+
+              {tokenError && (
+                <StatusPill tone="err">{tokenError}</StatusPill>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={!tokenModal.accessToken.trim() || actionLoading === 'token-connect'}
+                onClick={handleTokenConnect}
+                style={{ flex: 1 }}
+              >
+                {actionLoading === 'token-connect' ? 'Connecting…' : 'Connect'}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => { setTokenModal(null); setTokenError(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

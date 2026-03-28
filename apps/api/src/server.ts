@@ -551,6 +551,124 @@ app.post('/auth/:provider/exchange', async (request, reply) => {
 });
 
 // ---------------------------------------------------------------------------
+// Direct token connect — for providers that don't support OAuth (e.g. Facebook/Instagram
+// with a "Login for Business" app type). Accepts a raw Page Access Token, validates it
+// by fetching identity from the Graph API, and creates a connection record.
+// ---------------------------------------------------------------------------
+app.post('/auth/:provider/connect-token', async (request, reply) => {
+  const params = z.object({ provider: z.string() }).parse(request.params);
+  if (!isProviderId(params.provider)) {
+    return reply.code(400).send({ error: 'invalid_provider' });
+  }
+  const provider = params.provider;
+
+  const body = z
+    .object({
+      accessToken: z.string().min(1),
+      pageId: z.string().optional(),    // required for facebook page posting
+      accountRef: z.string().optional(), // override auto-detected accountRef
+      displayName: z.string().optional(),
+      // For Instagram: IG Business Account ID (not the FB Page ID)
+      instagramAccountId: z.string().optional(),
+    })
+    .parse(request.body);
+
+  // Validate token + resolve identity
+  let resolvedDisplayName = body.displayName || provider;
+  let resolvedAccountRef = body.accountRef || '';
+  let tokenToStore = body.accessToken;
+
+  try {
+    switch (provider) {
+      case 'facebook': {
+        if (body.pageId) {
+          // If pageId is provided, fetch Page name + get a Page token if access_token is a User token
+          const pageRes = await fetch(
+            `https://graph.facebook.com/v20.0/${encodeURIComponent(body.pageId)}?fields=id,name,access_token&access_token=${encodeURIComponent(body.accessToken)}`
+          );
+          if (!pageRes.ok) {
+            return reply.code(400).send({ error: 'facebook_page_fetch_failed', status: pageRes.status });
+          }
+          const pageData = (await pageRes.json()) as { id?: string; name?: string; access_token?: string };
+          resolvedDisplayName = body.displayName || pageData.name || 'Facebook Page';
+          resolvedAccountRef = pageData.id || body.pageId;
+          // If the page has its own access_token (user token exchange), prefer it
+          if (pageData.access_token) tokenToStore = pageData.access_token;
+        } else {
+          // Fall back: treat accessToken as a Page Access Token directly
+          const identity = await fetchFacebookIdentity(body.accessToken);
+          resolvedDisplayName = body.displayName || identity.displayName;
+          resolvedAccountRef = identity.accountRef;
+          if (identity.pageAccessToken) tokenToStore = identity.pageAccessToken;
+        }
+        break;
+      }
+      case 'instagram': {
+        if (body.instagramAccountId) {
+          // Verify the IG account ID is accessible and get its username
+          const igRes = await fetch(
+            `https://graph.facebook.com/v20.0/${encodeURIComponent(body.instagramAccountId)}?fields=id,name,username&access_token=${encodeURIComponent(body.accessToken)}`
+          );
+          if (!igRes.ok) {
+            return reply.code(400).send({ error: 'instagram_account_fetch_failed', status: igRes.status });
+          }
+          const igData = (await igRes.json()) as { id?: string; name?: string; username?: string };
+          resolvedDisplayName = body.displayName || (igData.username ? `@${igData.username}` : igData.name || 'Instagram');
+          resolvedAccountRef = igData.id || body.instagramAccountId;
+        } else {
+          const identity = await fetchInstagramIdentity(body.accessToken);
+          resolvedDisplayName = body.displayName || identity.displayName;
+          resolvedAccountRef = identity.accountRef;
+        }
+        break;
+      }
+      default:
+        return reply.code(400).send({ error: 'provider_not_supported_for_direct_token', provider });
+    }
+  } catch (err) {
+    return reply.code(400).send({
+      error: 'token_validation_failed',
+      detail: err instanceof Error ? err.message : 'unknown',
+    });
+  }
+
+  if (!resolvedAccountRef) {
+    return reply.code(400).send({ error: 'could_not_resolve_account_ref', hint: 'Provide pageId or instagramAccountId' });
+  }
+
+  const encryptedToken = encrypt(tokenToStore);
+
+  // Page Access Tokens don't expire — no expiresAt set
+  const connection = await prisma.socialConnection.create({
+    data: {
+      provider,
+      displayName: resolvedDisplayName,
+      accountRef: resolvedAccountRef,
+      encryptedToken,
+      encryptedRefresh: null,
+      scopes: [],
+      expiresAt: null,
+      status: 'connected',
+    },
+  });
+
+  await audit('connection', connection.id, 'token_connected', { provider, accountRef: resolvedAccountRef });
+
+  return {
+    connection: {
+      id: connection.id,
+      provider: connection.provider,
+      displayName: connection.displayName,
+      accountRef: connection.accountRef,
+      status: connection.status,
+      expiresAt: null,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    },
+  };
+});
+
+// ---------------------------------------------------------------------------
 // Connections — full CRUD
 // ---------------------------------------------------------------------------
 app.get('/connections', async () => {

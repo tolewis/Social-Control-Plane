@@ -181,6 +181,17 @@ export function deleteConnection(id: string) {
   return apiFetch<void>(`/connections/${id}`, { method: 'DELETE' });
 }
 
+export function connectWithToken(
+  provider: ProviderId,
+  body: { accessToken: string; pageId?: string; instagramAccountId?: string; displayName?: string },
+): Promise<{ connection: ConnectionRecord }> {
+  return apiFetch<{ connection: ConnectionRecord }>(`/auth/${provider}/connect-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export function refreshConnection(id: string) {
   return apiFetch<{ refreshed: boolean; connection: ConnectionRecord }>(`/connections/${id}/refresh`, {
     method: 'POST',
