@@ -59,10 +59,11 @@ const nav: NavItem[] = [
 
 const mobileNav: NavItem[] = [
   { label: 'Home', href: '/', icon: IconGauge },
-  { label: 'Compose', href: '/compose', icon: IconPlus },
   { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
+  { label: 'Connect', href: '/connections', icon: IconPlug },
+  { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 
 function isActive(pathname: string, href: string) {
