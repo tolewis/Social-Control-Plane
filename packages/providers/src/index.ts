@@ -102,12 +102,7 @@ export class LinkedInAdapter implements ProviderAuthAdapter, ProviderPublishAdap
     const scopes = (params.scopes?.length ? params.scopes : [
       'openid',
       'profile',
-      'email',
-      // posting
       'w_member_social',
-      // org posting/admin (may require app review)
-      'r_organization_social',
-      'rw_organization_admin',
     ]);
 
     const scope = encodeURIComponent(scopes.join(' '));
