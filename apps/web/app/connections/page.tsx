@@ -9,10 +9,18 @@ import { deleteConnection, getAuthUrl } from '../_lib/api';
 import type { ConnectionRecord, ProviderId } from '../_lib/api';
 import { PROVIDER_META, PROVIDER_ORDER } from '../_lib/providerMeta';
 
+// Providers with short-lived tokens that auto-refresh (don't alarm the user)
+const AUTO_REFRESH_PROVIDERS = new Set(['x']);
+
 function healthColor(conn: ConnectionRecord): 'green' | 'yellow' | 'red' {
-  if (conn.status === 'revoked' || conn.status === 'error') return 'red';
+  if (conn.status === 'revoked' || conn.status === 'error' || conn.status === 'reconnect_required') return 'red';
   if (conn.expiresAt) {
-    const daysLeft = (new Date(conn.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    const msLeft = new Date(conn.expiresAt).getTime() - Date.now();
+    // Short-lived auto-refresh tokens: only red if actually expired (refresh failed)
+    if (AUTO_REFRESH_PROVIDERS.has(conn.provider)) {
+      return msLeft <= 0 ? 'red' : 'green';
+    }
+    const daysLeft = msLeft / (1000 * 60 * 60 * 24);
     if (daysLeft <= 0) return 'red';
     if (daysLeft <= 7) return 'yellow';
   }
@@ -22,7 +30,13 @@ function healthColor(conn: ConnectionRecord): 'green' | 'yellow' | 'red' {
 
 function expiryLabel(conn: ConnectionRecord): string {
   if (conn.expiresAt) {
-    const daysLeft = Math.floor((new Date(conn.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const msLeft = new Date(conn.expiresAt).getTime() - Date.now();
+    // Short-lived auto-refresh tokens: show "Auto-renewing" instead of scary countdowns
+    if (AUTO_REFRESH_PROVIDERS.has(conn.provider)) {
+      if (msLeft <= 0) return 'Token expired — reconnect needed';
+      return 'Auto-renewing';
+    }
+    const daysLeft = Math.floor(msLeft / (1000 * 60 * 60 * 24));
     if (daysLeft < 0) return 'Expired';
     if (daysLeft === 0) return 'Expires today';
     if (daysLeft === 1) return 'Expires tomorrow';
@@ -68,7 +82,7 @@ export default function ConnectionsPage() {
 
   const sortedConnections = useMemo(() => {
     return [...allConnections].sort((a, b) => {
-      const order = { connected: 0, pending: 1, error: 2, revoked: 3 };
+      const order: Record<string, number> = { connected: 0, pending: 1, error: 2, revoked: 3, reconnect_required: 4 };
       return (order[a.status] ?? 9) - (order[b.status] ?? 9);
     });
   }, [allConnections]);

@@ -59,7 +59,7 @@ export async function login(password: string): Promise<{ token: string }> {
 export type ProviderId = 'linkedin' | 'facebook' | 'instagram' | 'x';
 export type PublishMode = 'draft-human' | 'draft-agent' | 'direct-human' | 'direct-agent';
 export type DraftStatus = 'draft' | 'queued' | 'published' | 'failed';
-export type ConnectionStatus = 'pending' | 'connected' | 'revoked' | 'error';
+export type ConnectionStatus = 'pending' | 'connected' | 'revoked' | 'error' | 'reconnect_required';
 export type PublishJobStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled';
 
 export interface ConnectionRecord {
