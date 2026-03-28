@@ -331,11 +331,8 @@ export class FacebookAdapter implements ProviderAuthAdapter, ProviderPublishAdap
     const clientId = this.appId();
     const scopes = (params.scopes?.length ? params.scopes : [
       'pages_show_list',
-      'business_management',
       'pages_manage_posts',
-      'pages_manage_engagement',
       'pages_read_engagement',
-      'read_insights',
     ]);
 
     return (
