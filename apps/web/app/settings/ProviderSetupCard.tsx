@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { ProviderIcon, IconCopy, IconRefresh, IconChevronDown } from '../_components/icons';
 import { StatusPill } from '../_components/ui';
@@ -96,6 +97,10 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
   }, [provider, onRefetch]);
 
   const handleConnect = useCallback(async () => {
+    if (meta.authMode === 'direct-token') {
+      window.location.href = `/connections?connect=${provider}`;
+      return;
+    }
     setActionLoading('connect');
     const popup = window.open('about:blank', '_blank');
     try {
@@ -111,9 +116,18 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
     } finally {
       setActionLoading(null);
     }
-  }, [provider]);
+  }, [meta.authMode, provider]);
 
   const handleRefresh = useCallback(async (conn: ConnectionRecord) => {
+    if (meta.authMode === 'direct-token') {
+      const params = new URLSearchParams({
+        connect: conn.provider,
+        accountRef: conn.accountRef ?? '',
+        displayName: conn.displayName ?? '',
+      });
+      window.location.href = `/connections?${params.toString()}`;
+      return;
+    }
     setActionLoading(`refresh-${conn.id}`);
     const popup = window.open('about:blank', '_blank');
     try {
@@ -129,7 +143,7 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
     } finally {
       setActionLoading(null);
     }
-  }, []);
+  }, [meta.authMode]);
 
   const handleDisconnect = useCallback(async (id: string) => {
     setActionLoading(`disconnect-${id}`);
@@ -177,11 +191,11 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
               {meta.devConsoleLabel} <span aria-hidden>&#8599;</span>
             </a>
             <a href={meta.oauthDocsUrl} target="_blank" rel="noopener noreferrer" className="setupLink">
-              OAuth Setup Guide <span aria-hidden>&#8599;</span>
+              {meta.authMode === 'oauth' ? 'OAuth Setup Guide' : 'Meta Setup Reference'} <span aria-hidden>&#8599;</span>
             </a>
           </div>
 
-          {redirectUri && (
+          {redirectUri && meta.authMode === 'oauth' && (
             <div className="redirectUriBlock">
               <span className="formLabel" style={{ marginBottom: 4 }}>Redirect URI</span>
               <div className="redirectUriRow">
@@ -243,6 +257,9 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
           <div className="providerMeta">
             <span className="mono subtle">Scopes: {meta.scopes.join(', ')}</span>
             <span className="subtle">{meta.notes}</span>
+            {meta.authMode === 'direct-token' && (
+              <span className="subtle">After saving credentials, finish the connection from the Connections page.</span>
+            )}
           </div>
         </div>
       )}
@@ -259,16 +276,27 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
           )}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={actionLoading === 'connect'}
-              onClick={handleConnect}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
-            >
-              <ProviderIcon provider={provider} size={16} />
-              {actionLoading === 'connect' ? 'Connecting...' : `Connect ${meta.displayName}`}
-            </button>
+            {meta.authMode === 'oauth' ? (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={actionLoading === 'connect'}
+                onClick={handleConnect}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <ProviderIcon provider={provider} size={16} />
+                {actionLoading === 'connect' ? 'Connecting...' : `Connect ${meta.displayName}`}
+              </button>
+            ) : (
+              <Link
+                href={`/connections?connect=${provider}`}
+                className="btn primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
+              >
+                <ProviderIcon provider={provider} size={16} />
+                Open Meta Connect Flow
+              </Link>
+            )}
 
             <button
               type="button"
@@ -331,6 +359,14 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
             </div>
           )}
 
+          {meta.authMode === 'direct-token' && !editing && (
+            <div className="providerMeta" style={{ marginTop: 14 }}>
+              <span className="mono subtle">Scopes: {meta.scopes.join(', ')}</span>
+              <span className="subtle">{meta.notes}</span>
+              <span className="subtle">Use Connections to paste a Graph API Explorer token and optionally pin the exact Page or Instagram Business account.</span>
+            </div>
+          )}
+
           {saveError && !editing && <StatusPill tone="err">{saveError}</StatusPill>}
         </div>
       )}
@@ -338,6 +374,30 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
       {/* ── CONNECTED ── */}
       {state === 'connected' && (
         <div className="providerCardBody">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {meta.authMode === 'oauth' ? (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={actionLoading === 'connect'}
+                onClick={handleConnect}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                <ProviderIcon provider={provider} size={16} />
+                Add Another {meta.displayName}
+              </button>
+            ) : (
+              <Link
+                href={`/connections?connect=${provider}`}
+                className="btn primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
+              >
+                <ProviderIcon provider={provider} size={16} />
+                Add Another {meta.displayName}
+              </Link>
+            )}
+          </div>
+
           {entry!.connections.map((c) => (
             <div key={c.id} className="connRow">
               <div style={{ flex: 1, minWidth: 0 }}>

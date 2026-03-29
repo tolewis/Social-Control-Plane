@@ -40,13 +40,15 @@ function DocContent({ section }: { section: DocSection }) {
         <div className="helpDoc">
           <h3>Connect Facebook</h3>
           <ol>
-            <li>Go to <strong>Meta for Developers</strong> and create a Facebook app (type: Business).</li>
-            <li>Under <strong>Facebook Login → Settings</strong>, add the redirect URI shown on the Integrations tab.</li>
-            <li>Required permissions: <code className="mono">pages_manage_posts</code>, <code className="mono">pages_read_engagement</code>.</li>
-            <li>Go to <strong>Settings → Integrations</strong>, find the Facebook card, and enter your <strong>App ID</strong> and <strong>App Secret</strong>.</li>
-            <li>Click <strong>Connect Facebook</strong> and authorize the app.</li>
+            <li>Facebook publishing in Social Plane targets a <strong>Facebook Page</strong>, not a personal profile.</li>
+            <li>Go to <strong>Meta for Developers</strong> and create or open the Meta app that has access to that Page.</li>
+            <li>Required permissions: <code className="mono">pages_show_list</code>, <code className="mono">pages_manage_posts</code>, <code className="mono">pages_read_engagement</code>.</li>
+            <li>In <strong>Settings → Integrations</strong>, save your <strong>App ID</strong> and <strong>App Secret</strong>.</li>
+            <li>Then go to <strong>Connections</strong> and use the Facebook Meta token flow. Paste a token from Graph API Explorer.</li>
+            <li>If the token can access more than one Page, enter the exact <strong>Facebook Page ID</strong> so the correct Page token is stored.</li>
           </ol>
-          <p className="helpNote">Facebook page tokens can be long-lived (60 days). The app will exchange for a long-lived token automatically during the OAuth flow.</p>
+          <p className="helpNote">Current product behavior: Facebook uses direct token connect on the Connections page. The older redirect-URI OAuth instructions are not the main path anymore.</p>
+          <p className="helpNote">Use case split: personal Facebook profiles are not supported for publishing. Business Pages are.</p>
           <p className="helpNote">Env fallback: <code className="mono">FACEBOOK_APP_ID</code> / <code className="mono">FACEBOOK_APP_SECRET</code></p>
         </div>
       );
@@ -59,12 +61,13 @@ function DocContent({ section }: { section: DocSection }) {
             <li>Instagram publishing requires a <strong>Facebook app</strong> with Instagram Graph API enabled.</li>
             <li>Your Instagram account must be a <strong>Business</strong> or <strong>Creator</strong> account linked to a Facebook Page.</li>
             <li>Under your Facebook app, enable the <strong>Instagram Graph API</strong> product.</li>
-            <li>Add the redirect URI shown on the Integrations tab.</li>
             <li>Required permissions: <code className="mono">instagram_basic</code>, <code className="mono">instagram_content_publish</code>, <code className="mono">pages_show_list</code>.</li>
-            <li>Go to <strong>Settings → Integrations</strong>, find the Instagram card, and enter the same <strong>Facebook App ID</strong> and <strong>App Secret</strong>.</li>
-            <li>Click <strong>Connect Instagram</strong> and authorize.</li>
+            <li>Go to <strong>Settings → Integrations</strong> and save the shared <strong>Facebook App ID</strong> and <strong>App Secret</strong>.</li>
+            <li>Then go to <strong>Connections</strong> and use the Instagram Meta token flow.</li>
+            <li>If auto-detection finds the wrong linked account, enter the exact <strong>Instagram Business Account ID</strong>.</li>
           </ol>
           <p className="helpNote">Instagram publishing is container-based: Social Plane creates a media container, waits for processing, then publishes. This is handled automatically.</p>
+          <p className="helpNote">Use case split: personal Instagram accounts are not supported. Business and Creator accounts linked to a Facebook Page are supported.</p>
           <p className="helpNote">Env fallback: <code className="mono">FACEBOOK_APP_ID</code> / <code className="mono">FACEBOOK_APP_SECRET</code> (shared with Facebook)</p>
         </div>
       );

@@ -2,6 +2,7 @@ import type { ProviderId } from './api';
 
 export interface ProviderMeta {
   displayName: string;
+  authMode: 'oauth' | 'direct-token';
   devConsoleUrl: string;
   devConsoleLabel: string;
   oauthDocsUrl: string;
@@ -14,6 +15,7 @@ export interface ProviderMeta {
 export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   x: {
     displayName: 'X (Twitter)',
+    authMode: 'oauth',
     devConsoleUrl: 'https://console.x.com',
     devConsoleLabel: 'X Developer Console',
     oauthDocsUrl: 'https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code',
@@ -31,6 +33,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   },
   linkedin: {
     displayName: 'LinkedIn',
+    authMode: 'oauth',
     devConsoleUrl: 'https://www.linkedin.com/developers/apps',
     devConsoleLabel: 'LinkedIn Developer Portal',
     oauthDocsUrl: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow',
@@ -46,6 +49,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   },
   facebook: {
     displayName: 'Facebook',
+    authMode: 'direct-token',
     devConsoleUrl: 'https://developers.facebook.com/apps/',
     devConsoleLabel: 'Meta Developer Portal',
     oauthDocsUrl: 'https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow',
@@ -53,14 +57,15 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     scopes: ['pages_manage_posts', 'pages_read_engagement'],
     setupSteps: [
       'Create a Facebook app at developers.facebook.com (type: Business)',
-      'Under Facebook Login > Settings, add the redirect URI shown below',
-      'Add the required permissions under App Review',
-      'Copy your App ID and App Secret below',
+      'Add the required permissions under App Review for the Page you want to publish to',
+      'Save your App ID and App Secret here',
+      'Then go to Connections and use the Meta token flow to connect a Facebook Page',
     ],
-    notes: 'Facebook page tokens can be long-lived (60 days). The app exchanges for a long-lived token automatically.',
+    notes: 'Social Plane currently connects Facebook through a Page/User access token from Meta Graph API Explorer. Personal profiles are not supported for publishing; use a Facebook Page.',
   },
   instagram: {
     displayName: 'Instagram',
+    authMode: 'direct-token',
     devConsoleUrl: 'https://developers.facebook.com/apps/',
     devConsoleLabel: 'Meta Developer Portal',
     oauthDocsUrl: 'https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/get-started',
@@ -70,10 +75,10 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
       'Instagram publishing requires a Facebook app with Instagram Graph API enabled',
       'Your Instagram account must be a Business or Creator account linked to a Facebook Page',
       'Enable the Instagram Graph API product in your Facebook app',
-      'Add the redirect URI shown below',
-      'Use the same Facebook App ID and App Secret',
+      'Use the same Facebook App ID and App Secret here',
+      'Then go to Connections and use the Meta token flow to connect the Instagram business account',
     ],
-    notes: 'Instagram publishing is container-based (create → wait → publish). This is handled automatically.',
+    notes: 'Social Plane currently connects Instagram through a Meta access token plus the linked Instagram Business account. Personal Instagram accounts are not supported.',
   },
 };
 

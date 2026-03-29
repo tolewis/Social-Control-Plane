@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { StatusPill } from '../_components/ui';
 import { ProviderIcon, IconRefresh } from '../_components/icons';
 import { useProviderStatus } from '../hooks/useProviderStatus';
@@ -68,11 +69,16 @@ type TokenModalState = {
 } | null;
 
 export default function ConnectionsPage() {
+  const searchParams = useSearchParams();
   const { providers, loading, error, refetch } = useProviderStatus();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [tokenModal, setTokenModal] = useState<TokenModalState>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+
+  const requestedConnectProvider = searchParams.get('connect');
+  const requestedAccountRef = searchParams.get('accountRef') ?? '';
+  const requestedDisplayName = searchParams.get('displayName') ?? '';
 
   // Listen for OAuth completions from the callback tab
   useEffect(() => {
@@ -86,6 +92,22 @@ export default function ConnectionsPage() {
       return () => window.removeEventListener('focus', onFocus);
     }
   }, [refetch]);
+
+  useEffect(() => {
+    if (!providers) return;
+    if (tokenModal) return;
+    if (requestedConnectProvider !== 'facebook' && requestedConnectProvider !== 'instagram') return;
+    if (!providers[requestedConnectProvider]?.configured) return;
+
+    setTokenModal({
+      provider: requestedConnectProvider,
+      accessToken: '',
+      pageId: requestedConnectProvider === 'facebook' ? requestedAccountRef : '',
+      instagramAccountId: requestedConnectProvider === 'instagram' ? requestedAccountRef : '',
+      displayName: requestedDisplayName,
+    });
+    setTokenError(null);
+  }, [providers, requestedAccountRef, requestedConnectProvider, requestedDisplayName, tokenModal]);
 
   // Gather all connections from all providers
   const allConnections = useMemo(() => {
@@ -101,9 +123,9 @@ export default function ConnectionsPage() {
   }, [allConnections]);
 
   // Providers that are configured but have no connections
-  const readyProviders = useMemo(() => {
+  const configuredProviders = useMemo(() => {
     if (!providers) return [];
-    return PROVIDER_ORDER.filter((p) => providers[p]?.configured && providers[p].connections.length === 0);
+    return PROVIDER_ORDER.filter((p) => providers[p]?.configured);
   }, [providers]);
 
   // Providers that are not configured
@@ -171,6 +193,17 @@ export default function ConnectionsPage() {
   }, [refetch]);
 
   const handleRefresh = useCallback(async (conn: ConnectionRecord) => {
+    if (TOKEN_AUTH_PROVIDERS.has(conn.provider)) {
+      setTokenModal({
+        provider: conn.provider,
+        accessToken: '',
+        pageId: conn.provider === 'facebook' ? (conn.accountRef ?? '') : '',
+        instagramAccountId: conn.provider === 'instagram' ? (conn.accountRef ?? '') : '',
+        displayName: conn.displayName ?? '',
+      });
+      setTokenError(null);
+      return;
+    }
     setActionLoading(`refresh-${conn.id}`);
     setActionError(null);
     const popup = window.open('about:blank', '_blank');
@@ -193,6 +226,15 @@ export default function ConnectionsPage() {
     <section>
       <h1 className="pageTitle">Connections</h1>
       <p className="lead">Manage your connected social accounts.</p>
+      <div className="card" style={{ marginTop: 16, marginBottom: 16, padding: 18 }}>
+        <p style={{ marginBottom: 8, fontWeight: 650 }}>Authentication paths</p>
+        <p className="subtle" style={{ fontSize: '0.9rem', marginBottom: 8 }}>
+          X and LinkedIn connect through the normal OAuth popup. Facebook and Instagram currently connect through a Meta access token because the supported Meta app setups vary by use case.
+        </p>
+        <p className="subtle" style={{ fontSize: '0.9rem', marginBottom: 0 }}>
+          For Meta: personal profiles are not publish targets. Facebook must connect to a Page. Instagram must be a Business or Creator account linked to a Facebook Page.
+        </p>
+      </div>
 
       {(error || actionError) && (
         <div style={{ marginBottom: 16, marginTop: 8 }}>
@@ -202,7 +244,7 @@ export default function ConnectionsPage() {
 
       {loading ? (
         <p className="subtle">Loading...</p>
-      ) : sortedConnections.length === 0 && readyProviders.length === 0 ? (
+      ) : sortedConnections.length === 0 && configuredProviders.length === 0 ? (
         <div className="emptyState">
           <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>No connections yet</p>
           {unconfiguredProviders.length > 0 ? (
@@ -226,7 +268,7 @@ export default function ConnectionsPage() {
             </>
           ) : (
             <p className="subtle" style={{ marginTop: 8 }}>
-              All providers are configured. Connect one to start publishing.
+              All providers are configured. Add one or more connections to start publishing.
             </p>
           )}
         </div>
@@ -356,11 +398,11 @@ export default function ConnectionsPage() {
           )}
 
           {/* Ready to connect — configured but no connection yet */}
-          {readyProviders.length > 0 && (
+          {configuredProviders.length > 0 && (
             <div style={{ marginTop: 20 }}>
-              <h2 className="sectionTitle">Ready to Connect</h2>
+              <h2 className="sectionTitle">Add Connection</h2>
               <div className="chips" style={{ marginTop: 8 }}>
-                {readyProviders.map((provider) => (
+                {configuredProviders.map((provider) => (
                   <button
                     key={provider}
                     type="button"
@@ -410,9 +452,30 @@ export default function ConnectionsPage() {
               Connect {PROVIDER_META[tokenModal.provider]?.displayName}
             </h2>
             <p className="subtle" style={{ marginBottom: 20, fontSize: '0.9rem' }}>
-              Paste your {tokenModal.provider === 'instagram' ? 'User' : 'User or Page'} Access Token from the{' '}
+              Paste your {tokenModal.provider === 'instagram' ? 'Meta User' : 'Meta User or Page'} Access Token from the{' '}
               <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer">Meta Graph API Explorer</a>.
             </p>
+            <div className="card" style={{ padding: 14, marginBottom: 16, background: 'rgba(255,255,255,0.03)' }}>
+              {tokenModal.provider === 'facebook' ? (
+                <>
+                  <p style={{ marginBottom: 8, fontWeight: 600, fontSize: '0.9rem' }}>Facebook workflow</p>
+                  <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: '0.88rem' }}>
+                    <li>Use a Meta app that can access the Facebook Page you want to publish to.</li>
+                    <li>Generate a User token with page scopes, or paste a Page token directly.</li>
+                    <li>If you manage multiple Pages, enter the exact Facebook Page ID below so Social Plane stores the right Page token.</li>
+                  </ol>
+                </>
+              ) : (
+                <>
+                  <p style={{ marginBottom: 8, fontWeight: 600, fontSize: '0.9rem' }}>Instagram workflow</p>
+                  <ol style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: '0.88rem' }}>
+                    <li>Use an Instagram Business or Creator account linked to a Facebook Page.</li>
+                    <li>Generate a Meta token with Instagram Graph access.</li>
+                    <li>If auto-detection finds the wrong account, enter the exact Instagram Business Account ID below.</li>
+                  </ol>
+                </>
+              )}
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -435,20 +498,33 @@ export default function ConnectionsPage() {
                     value={tokenModal.pageId}
                     onChange={(e) => setTokenModal({ ...tokenModal, pageId: e.target.value })}
                   />
-                  <span className="subtle" style={{ fontSize: '0.78rem' }}>If not provided, we'll auto-detect from your first connected Page.</span>
+                  <span className="subtle" style={{ fontSize: '0.78rem' }}>Recommended when the token can access more than one Page. If blank, Social Plane uses the first Page Meta returns.</span>
                 </label>
               )}
 
               {tokenModal.provider === 'instagram' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instagram Business Account ID (optional)</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Linked Facebook Page ID (recommended)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1669244329963758"
+                    value={tokenModal.pageId}
+                    onChange={(e) => setTokenModal({ ...tokenModal, pageId: e.target.value })}
+                  />
+                  <span className="subtle" style={{ fontSize: '0.78rem' }}>Best path when the Instagram business account is attached to a known Facebook Page.</span>
+                </label>
+              )}
+
+              {tokenModal.provider === 'instagram' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instagram Business Account ID (optional override)</span>
                   <input
                     type="text"
                     placeholder="e.g. 17841400000000000"
                     value={tokenModal.instagramAccountId}
                     onChange={(e) => setTokenModal({ ...tokenModal, instagramAccountId: e.target.value })}
                   />
-                  <span className="subtle" style={{ fontSize: '0.78rem' }}>Found under the Facebook Page's Instagram settings.</span>
+                  <span className="subtle" style={{ fontSize: '0.78rem' }}>Recommended if the token can see multiple linked Instagram business accounts.</span>
                 </label>
               )}
 

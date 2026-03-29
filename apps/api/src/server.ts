@@ -256,6 +256,39 @@ async function fetchInstagramIdentity(accessToken: string): Promise<{ displayNam
   };
 }
 
+async function fetchInstagramIdentityFromPage(
+  pageId: string,
+  accessToken: string,
+): Promise<{ displayName: string; accountRef: string; pageAccessToken?: string }> {
+  const pageRes = await fetch(
+    `https://graph.facebook.com/v20.0/${encodeURIComponent(pageId)}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  if (!pageRes.ok) throw new Error(`instagram_page_failed:${pageRes.status}`);
+  const pageData = (await pageRes.json()) as {
+    id?: string;
+    name?: string;
+    access_token?: string;
+    instagram_business_account?: { id?: string };
+  };
+
+  const igAccountId = pageData.instagram_business_account?.id || '';
+  if (!igAccountId) {
+    throw new Error('instagram_page_missing_business_account');
+  }
+
+  const igRes = await fetch(
+    `https://graph.facebook.com/v20.0/${encodeURIComponent(igAccountId)}?fields=id,name,username&access_token=${encodeURIComponent(pageData.access_token || accessToken)}`,
+  );
+  if (!igRes.ok) throw new Error(`instagram_account_fetch_failed:${igRes.status}`);
+  const igData = (await igRes.json()) as { id?: string; name?: string; username?: string };
+
+  return {
+    displayName: igData.username ? `@${igData.username}` : igData.name || pageData.name || 'Instagram',
+    accountRef: igData.id || igAccountId,
+    pageAccessToken: pageData.access_token,
+  };
+}
+
 async function fetchXIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
   const res = await fetch('https://api.x.com/2/users/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -565,10 +598,9 @@ app.post('/auth/:provider/connect-token', async (request, reply) => {
   const body = z
     .object({
       accessToken: z.string().min(1),
-      pageId: z.string().optional(),    // required for facebook page posting
-      accountRef: z.string().optional(), // override auto-detected accountRef
+      pageId: z.string().optional(),
+      accountRef: z.string().optional(),
       displayName: z.string().optional(),
-      // For Instagram: IG Business Account ID (not the FB Page ID)
       instagramAccountId: z.string().optional(),
     })
     .parse(request.body);
@@ -605,7 +637,6 @@ app.post('/auth/:provider/connect-token', async (request, reply) => {
       }
       case 'instagram': {
         if (body.instagramAccountId) {
-          // Verify the IG account ID is accessible and get its username
           const igRes = await fetch(
             `https://graph.facebook.com/v20.0/${encodeURIComponent(body.instagramAccountId)}?fields=id,name,username&access_token=${encodeURIComponent(body.accessToken)}`
           );
@@ -615,6 +646,11 @@ app.post('/auth/:provider/connect-token', async (request, reply) => {
           const igData = (await igRes.json()) as { id?: string; name?: string; username?: string };
           resolvedDisplayName = body.displayName || (igData.username ? `@${igData.username}` : igData.name || 'Instagram');
           resolvedAccountRef = igData.id || body.instagramAccountId;
+        } else if (body.pageId) {
+          const identity = await fetchInstagramIdentityFromPage(body.pageId, body.accessToken);
+          resolvedDisplayName = body.displayName || identity.displayName;
+          resolvedAccountRef = identity.accountRef;
+          if (identity.pageAccessToken) tokenToStore = identity.pageAccessToken;
         } else {
           const identity = await fetchInstagramIdentity(body.accessToken);
           resolvedDisplayName = body.displayName || identity.displayName;
@@ -633,7 +669,10 @@ app.post('/auth/:provider/connect-token', async (request, reply) => {
   }
 
   if (!resolvedAccountRef) {
-    return reply.code(400).send({ error: 'could_not_resolve_account_ref', hint: 'Provide pageId or instagramAccountId' });
+    return reply.code(400).send({
+      error: 'could_not_resolve_account_ref',
+      hint: provider === 'instagram' ? 'Provide instagramAccountId or the linked Facebook pageId' : 'Provide pageId',
+    });
   }
 
   const encryptedToken = encrypt(tokenToStore);

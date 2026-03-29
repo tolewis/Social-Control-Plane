@@ -40,7 +40,7 @@ export function IntegrationsTab({ highlightProvider }: IntegrationsTabProps) {
     <div>
       <h2 className="sectionTitle">Integrations</h2>
       <p className="subtle" style={{ marginBottom: 16, fontSize: '0.88rem' }}>
-        Set up each provider by entering your developer credentials, then connect your account.
+        Set up each provider by entering your developer credentials, then connect your account. X and LinkedIn use an OAuth popup. Facebook and Instagram use the Meta token flow from the Connections page.
       </p>
 
       {error && (
