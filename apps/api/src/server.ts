@@ -28,7 +28,16 @@ import { detectSlop, groupSlopMatches } from './slop.js';
 
 // Prisma model types for map callback annotations.
 // Defined locally to avoid version-mismatch issues with the generated client.
-type SocialConnectionRow = { id: string; provider: string; displayName: string; accountRef: string; status: string; createdAt: Date; updatedAt: Date };
+type SocialConnectionRow = {
+  id: string;
+  provider: string;
+  displayName: string;
+  accountRef: string;
+  status: string;
+  expiresAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 type DraftRow = { id: string; connectionId: string; publishMode: string; content: string; title: string | null; mediaJson: unknown; scheduledFor: Date | null; status: string; createdAt: Date; updatedAt: Date };
 type PublishJobRow = { id: string; draftId: string; connectionId: string; status: string; idempotencyKey: string; receiptJson: unknown; errorMessage: string | null; createdAt: Date; updatedAt: Date };
 
@@ -103,9 +112,9 @@ app.addHook('onRequest', async (request, reply) => {
     // Update lastUsedAt (fire-and-forget)
     prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
     // Attach operator info to request for audit
-    (request as Record<string, unknown>).operatorId = apiKey.operator.id;
-    (request as Record<string, unknown>).operatorName = apiKey.operator.name;
-    (request as Record<string, unknown>).operatorRole = apiKey.operator.role;
+    (request as unknown as Record<string, unknown>).operatorId = apiKey.operator.id;
+    (request as unknown as Record<string, unknown>).operatorName = apiKey.operator.name;
+    (request as unknown as Record<string, unknown>).operatorRole = apiKey.operator.role;
     return;
   }
 
@@ -287,6 +296,41 @@ async function fetchInstagramIdentityFromPage(
     accountRef: igData.id || igAccountId,
     pageAccessToken: pageData.access_token,
   };
+}
+
+type MetaPageDiscovery = {
+  pageId: string;
+  pageName: string;
+  pageAccessToken?: string;
+  instagramAccountId?: string;
+  instagramUsername?: string;
+  instagramName?: string;
+};
+
+async function discoverMetaPages(accessToken: string): Promise<MetaPageDiscovery[]> {
+  const res = await fetch(
+    `https://graph.facebook.com/v20.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  if (!res.ok) throw new Error(`meta_pages_discovery_failed:${res.status}`);
+  const data = (await res.json()) as {
+    data?: Array<{
+      id?: string;
+      name?: string;
+      access_token?: string;
+      instagram_business_account?: { id?: string; username?: string; name?: string };
+    }>;
+  };
+
+  return (data.data ?? [])
+    .filter((page) => page.id && page.name)
+    .map((page) => ({
+      pageId: page.id!,
+      pageName: page.name!,
+      pageAccessToken: page.access_token,
+      instagramAccountId: page.instagram_business_account?.id,
+      instagramUsername: page.instagram_business_account?.username,
+      instagramName: page.instagram_business_account?.name,
+    }));
 }
 
 async function fetchXIdentity(accessToken: string): Promise<{ displayName: string; accountRef: string }> {
@@ -705,6 +749,45 @@ app.post('/auth/:provider/connect-token', async (request, reply) => {
       updatedAt: connection.updatedAt.toISOString(),
     },
   };
+});
+
+app.post('/auth/:provider/discover', async (request, reply) => {
+  const params = z.object({ provider: z.string() }).parse(request.params);
+  if (!isProviderId(params.provider)) {
+    return reply.code(400).send({ error: 'invalid_provider' });
+  }
+  if (params.provider !== 'facebook' && params.provider !== 'instagram') {
+    return reply.code(400).send({ error: 'provider_not_supported_for_discovery', provider: params.provider });
+  }
+
+  const body = z.object({ accessToken: z.string().min(1) }).parse(request.body);
+
+  try {
+    const pages = await discoverMetaPages(body.accessToken);
+    const assets = params.provider === 'facebook'
+      ? pages.map((page) => ({
+          pageId: page.pageId,
+          pageName: page.pageName,
+          displayName: page.pageName,
+        }))
+      : pages
+        .filter((page) => page.instagramAccountId)
+        .map((page) => ({
+          pageId: page.pageId,
+          pageName: page.pageName,
+          instagramAccountId: page.instagramAccountId!,
+          instagramUsername: page.instagramUsername,
+          instagramName: page.instagramName,
+          displayName: page.instagramUsername ? `@${page.instagramUsername}` : page.instagramName || page.pageName,
+        }));
+
+    return { provider: params.provider, assets };
+  } catch (err) {
+    return reply.code(400).send({
+      error: 'meta_discovery_failed',
+      detail: err instanceof Error ? err.message : 'unknown',
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------

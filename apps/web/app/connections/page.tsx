@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { StatusPill } from '../_components/ui';
 import { ProviderIcon, IconRefresh } from '../_components/icons';
 import { useProviderStatus } from '../hooks/useProviderStatus';
-import { deleteConnection, getAuthUrl, connectWithToken } from '../_lib/api';
+import { deleteConnection, getAuthUrl, connectWithToken, discoverMetaAssets, type MetaDiscoveryAsset } from '../_lib/api';
 import type { ConnectionRecord, ProviderId } from '../_lib/api';
 import { PROVIDER_META, PROVIDER_ORDER } from '../_lib/providerMeta';
 
@@ -68,13 +68,15 @@ type TokenModalState = {
   displayName: string;
 } | null;
 
-export default function ConnectionsPage() {
+function ConnectionsPageInner() {
   const searchParams = useSearchParams();
   const { providers, loading, error, refetch } = useProviderStatus();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [tokenModal, setTokenModal] = useState<TokenModalState>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [discoveringAssets, setDiscoveringAssets] = useState(false);
+  const [discoveredAssets, setDiscoveredAssets] = useState<MetaDiscoveryAsset[]>([]);
 
   const requestedConnectProvider = searchParams.get('connect');
   const requestedAccountRef = searchParams.get('accountRef') ?? '';
@@ -139,6 +141,7 @@ export default function ConnectionsPage() {
     if (TOKEN_AUTH_PROVIDERS.has(provider)) {
       setTokenModal({ provider, accessToken: '', pageId: '', instagramAccountId: '', displayName: '' });
       setTokenError(null);
+      setDiscoveredAssets([]);
       return;
     }
     setActionLoading(provider);
@@ -171,6 +174,7 @@ export default function ConnectionsPage() {
         displayName: tokenModal.displayName || undefined,
       });
       setTokenModal(null);
+      setDiscoveredAssets([]);
       await refetch();
     } catch (err) {
       setTokenError(err instanceof Error ? err.message : 'Connection failed');
@@ -202,6 +206,7 @@ export default function ConnectionsPage() {
         displayName: conn.displayName ?? '',
       });
       setTokenError(null);
+      setDiscoveredAssets([]);
       return;
     }
     setActionLoading(`refresh-${conn.id}`);
@@ -221,6 +226,32 @@ export default function ConnectionsPage() {
       setActionLoading(null);
     }
   }, []);
+
+  const handleDiscoverAssets = useCallback(async () => {
+    if (!tokenModal) return;
+    if (tokenModal.provider !== 'facebook' && tokenModal.provider !== 'instagram') return;
+    if (!tokenModal.accessToken.trim()) {
+      setTokenError('Paste a Meta access token first.');
+      return;
+    }
+
+    setDiscoveringAssets(true);
+    setTokenError(null);
+    try {
+      const res = await discoverMetaAssets(tokenModal.provider, tokenModal.accessToken.trim());
+      setDiscoveredAssets(res.assets);
+      if (res.assets.length === 0) {
+        setTokenError(tokenModal.provider === 'instagram'
+          ? 'No linked Instagram business accounts were discoverable from this token.'
+          : 'No Facebook Pages were discoverable from this token.');
+      }
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : 'Discovery failed');
+      setDiscoveredAssets([]);
+    } finally {
+      setDiscoveringAssets(false);
+    }
+  }, [tokenModal]);
 
   return (
     <section>
@@ -484,10 +515,55 @@ export default function ConnectionsPage() {
                   rows={3}
                   placeholder="EAAx..."
                   value={tokenModal.accessToken}
-                  onChange={(e) => setTokenModal({ ...tokenModal, accessToken: e.target.value })}
+                  onChange={(e) => {
+                    setTokenModal({ ...tokenModal, accessToken: e.target.value });
+                    setDiscoveredAssets([]);
+                  }}
                   style={{ fontFamily: 'monospace', fontSize: '0.78rem', resize: 'vertical' }}
                 />
               </label>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={!tokenModal.accessToken.trim() || discoveringAssets}
+                  onClick={handleDiscoverAssets}
+                >
+                  {discoveringAssets ? 'Discovering…' : `Discover ${tokenModal.provider === 'facebook' ? 'Pages' : 'Instagram Accounts'}`}
+                </button>
+                <span className="subtle" style={{ fontSize: '0.78rem', alignSelf: 'center' }}>
+                  Pull available Meta assets from the current token and choose the exact account.
+                </span>
+              </div>
+
+              {discoveredAssets.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                    {tokenModal.provider === 'facebook' ? 'Discovered Facebook Pages' : 'Discovered Instagram Accounts'}
+                  </span>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {discoveredAssets.map((asset) => (
+                      <button
+                        key={`${asset.pageId}:${asset.instagramAccountId ?? 'fb'}`}
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => setTokenModal({
+                          ...tokenModal,
+                          pageId: asset.pageId,
+                          instagramAccountId: asset.instagramAccountId ?? '',
+                          displayName: asset.displayName,
+                        })}
+                        style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '10px 12px' }}
+                      >
+                        {tokenModal.provider === 'facebook'
+                          ? `${asset.pageName} (${asset.pageId})`
+                          : `${asset.displayName} via ${asset.pageName}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {tokenModal.provider === 'facebook' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -556,7 +632,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 className="btn ghost"
-                onClick={() => { setTokenModal(null); setTokenError(null); }}
+                onClick={() => { setTokenModal(null); setTokenError(null); setDiscoveredAssets([]); }}
               >
                 Cancel
               </button>
@@ -565,5 +641,13 @@ export default function ConnectionsPage() {
         </div>
       )}
     </section>
+  );
+}
+
+export default function ConnectionsPage() {
+  return (
+    <Suspense fallback={<section><p className="subtle">Loading connections…</p></section>}>
+      <ConnectionsPageInner />
+    </Suspense>
   );
 }

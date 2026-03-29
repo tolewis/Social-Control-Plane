@@ -73,6 +73,15 @@ export interface ConnectionRecord {
   updatedAt: string;
 }
 
+export interface MetaDiscoveryAsset {
+  pageId: string;
+  pageName: string;
+  displayName: string;
+  instagramAccountId?: string;
+  instagramUsername?: string;
+  instagramName?: string;
+}
+
 export interface MediaRecord {
   id: string;
   filename: string;
@@ -189,6 +198,17 @@ export function connectWithToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+export function discoverMetaAssets(
+  provider: Extract<ProviderId, 'facebook' | 'instagram'>,
+  accessToken: string,
+): Promise<{ provider: 'facebook' | 'instagram'; assets: MetaDiscoveryAsset[] }> {
+  return apiFetch<{ provider: 'facebook' | 'instagram'; assets: MetaDiscoveryAsset[] }>(`/auth/${provider}/discover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accessToken }),
   });
 }
 
