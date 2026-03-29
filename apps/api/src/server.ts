@@ -28,7 +28,7 @@ import { detectSlop, groupSlopMatches } from './slop.js';
 
 // Prisma model types for map callback annotations.
 // Defined locally to avoid version-mismatch issues with the generated client.
-type SocialConnectionRow = { id: string; provider: string; displayName: string; accountRef: string; status: string; expiresAt: Date | null; createdAt: Date; updatedAt: Date };
+type SocialConnectionRow = { id: string; provider: string; displayName: string; accountRef: string; status: string; createdAt: Date; updatedAt: Date };
 type DraftRow = { id: string; connectionId: string; publishMode: string; content: string; title: string | null; mediaJson: unknown; scheduledFor: Date | null; status: string; createdAt: Date; updatedAt: Date };
 type PublishJobRow = { id: string; draftId: string; connectionId: string; status: string; idempotencyKey: string; receiptJson: unknown; errorMessage: string | null; createdAt: Date; updatedAt: Date };
 
