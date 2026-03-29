@@ -48,6 +48,26 @@ function resolvePublicUploadBase(): string {
   return 'http://localhost:4001';
 }
 
+function shouldMarkReconnectRequired(provider: string, body: unknown): boolean {
+  if (provider !== 'facebook' && provider !== 'instagram') return false;
+  const error = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined;
+  if (!error || typeof error !== 'object') return false;
+
+  const code = typeof (error as { code?: unknown }).code === 'number'
+    ? (error as { code: number }).code
+    : undefined;
+  const subcode = typeof (error as { error_subcode?: unknown }).error_subcode === 'number'
+    ? (error as { error_subcode: number }).error_subcode
+    : undefined;
+  const message = typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message.toLowerCase()
+    : '';
+
+  if (code === 190) return true;
+  if (subcode === 463 || subcode === 467) return true;
+  return message.includes('access token') || message.includes('session was invalidated');
+}
+
 interface ProviderPublishAdapter {
   buildPublishRequest(input: {
     accessToken: string;
@@ -383,6 +403,10 @@ export async function handleDraftPublish(
         where: { id: draftId },
         data: { status: 'published', updatedAt: new Date() },
       }),
+      db.socialConnection.update({
+        where: { id: connectionId },
+        data: { status: 'connected', updatedAt: new Date() },
+      }),
     ]);
 
     log.info('draft.publish.succeeded', {
@@ -395,7 +419,7 @@ export async function handleDraftPublish(
   } else {
     // HTTP 4xx/5xx -- mark FAILED
     const errorMsg = `publish_failed:${result.status}`;
-    await Promise.all([
+    const updates: Array<Promise<unknown>> = [
       db.publishJob.updateMany({
         where: { draftId, connectionId, status: 'PROCESSING' },
         data: {
@@ -409,7 +433,16 @@ export async function handleDraftPublish(
         where: { id: draftId },
         data: { status: 'failed', updatedAt: new Date() },
       }),
-    ]);
+    ];
+    if (shouldMarkReconnectRequired(provider, result.body)) {
+      updates.push(
+        db.socialConnection.update({
+          where: { id: connectionId },
+          data: { status: 'reconnect_required', updatedAt: new Date() },
+        }),
+      );
+    }
+    await Promise.all(updates);
 
     log.error('draft.publish.http_error', {
       jobId: job.id,

@@ -32,7 +32,18 @@ function healthColor(conn: ConnectionRecord): 'green' | 'yellow' | 'red' {
   return 'green';
 }
 
+function reconnectHint(conn: ConnectionRecord): string | null {
+  if (conn.status !== 'reconnect_required') return null;
+  if (TOKEN_AUTH_PROVIDERS.has(conn.provider)) {
+    return 'Meta rejected the stored token. Reconnect this account before the next publish.';
+  }
+  return 'Reconnect this account before the next publish.';
+}
+
 function expiryLabel(conn: ConnectionRecord): string {
+  if (conn.status === 'reconnect_required') {
+    return 'Reconnect required';
+  }
   if (conn.expiresAt) {
     const msLeft = new Date(conn.expiresAt).getTime() - Date.now();
     // Short-lived auto-refresh tokens: show "Auto-renewing" instead of scary countdowns
@@ -57,6 +68,7 @@ function pillForStatus(status: ConnectionRecord['status']) {
     case 'pending':   return <StatusPill tone="warn">pending</StatusPill>;
     case 'revoked':   return <StatusPill tone="err">revoked</StatusPill>;
     case 'error':     return <StatusPill tone="err">error</StatusPill>;
+    case 'reconnect_required': return <StatusPill tone="err">reconnect needed</StatusPill>;
   }
 }
 
@@ -325,6 +337,7 @@ function ConnectionsPageInner() {
                       const health = healthColor(c);
                       const expiry = expiryLabel(c);
                       const isExpiring = health === 'yellow';
+                      const reconnectMessage = reconnectHint(c);
 
                       return (
                         <tr key={c.id}>
@@ -345,7 +358,10 @@ function ConnectionsPageInner() {
                           </td>
                           <td>{pillForStatus(c.status)}</td>
                           <td>
-                            <span className="subtle" style={{ fontSize: '0.85rem' }}>{expiry}</span>
+                            <div className="subtle" style={{ fontSize: '0.85rem' }}>{expiry}</div>
+                            {reconnectMessage && (
+                              <div className="subtle" style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>{reconnectMessage}</div>
+                            )}
                             {isExpiring && <StatusPill tone="warn">renew</StatusPill>}
                           </td>
                           <td style={{ textAlign: 'right' }}>
@@ -382,6 +398,7 @@ function ConnectionsPageInner() {
                   const health = healthColor(c);
                   const expiry = expiryLabel(c);
                   const isExpiring = health === 'yellow';
+                  const reconnectMessage = reconnectHint(c);
 
                   return (
                     <div key={c.id} className="listItem">
@@ -399,6 +416,11 @@ function ConnectionsPageInner() {
                         <span className="mono subtle" style={{ fontSize: '0.82rem' }}>{expiry}</span>
                         {isExpiring && <StatusPill tone="warn">renew soon</StatusPill>}
                       </div>
+                      {reconnectMessage && (
+                        <div className="subtle" style={{ fontSize: '0.82rem', color: 'var(--danger)', marginBottom: 8 }}>
+                          {reconnectMessage}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button

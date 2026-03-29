@@ -17,7 +17,7 @@ function resolveState(entry: ProviderStatusEntry | undefined): CardState {
 }
 
 function healthColor(conn: ConnectionRecord): 'green' | 'yellow' | 'red' {
-  if (conn.status === 'revoked' || conn.status === 'error') return 'red';
+  if (conn.status === 'revoked' || conn.status === 'error' || conn.status === 'reconnect_required') return 'red';
   if (conn.expiresAt) {
     const daysLeft = (new Date(conn.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     if (daysLeft <= 0) return 'red';
@@ -27,7 +27,18 @@ function healthColor(conn: ConnectionRecord): 'green' | 'yellow' | 'red' {
   return 'green';
 }
 
+function connectionStatusPill(conn: ConnectionRecord) {
+  switch (conn.status) {
+    case 'connected': return <StatusPill tone="ok">Connected</StatusPill>;
+    case 'pending': return <StatusPill tone="warn">Pending</StatusPill>;
+    case 'reconnect_required': return <StatusPill tone="err">Reconnect Needed</StatusPill>;
+    case 'revoked': return <StatusPill tone="err">Revoked</StatusPill>;
+    case 'error': return <StatusPill tone="err">Error</StatusPill>;
+  }
+}
+
 function connLabel(conn: ConnectionRecord): string {
+  if (conn.status === 'reconnect_required') return 'Reconnect required before the next publish';
   if (conn.expiresAt) {
     const daysLeft = Math.floor((new Date(conn.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (daysLeft < 0) return 'Expired';
@@ -172,7 +183,7 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
         {state === 'connected' && entry!.connections.map((c) => (
           <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span className={`healthDot ${healthColor(c)}`} />
-            <StatusPill tone="ok">Connected</StatusPill>
+            {connectionStatusPill(c)}
           </span>
         ))}
       </div>
@@ -403,6 +414,13 @@ export function ProviderSetupCard({ provider, entry, onRefetch, highlighted }: P
               <div style={{ flex: 1, minWidth: 0 }}>
                 {c.displayName && <div style={{ fontWeight: 650 }}>{c.displayName}</div>}
                 <div className="subtle" style={{ fontSize: '0.85rem' }}>{connLabel(c)}</div>
+                {c.status === 'reconnect_required' && (
+                  <div className="subtle" style={{ fontSize: '0.8rem', color: 'var(--danger)' }}>
+                    {meta.authMode === 'direct-token'
+                      ? 'Meta rejected the stored token. Open the connection flow again for this account.'
+                      : 'Refresh or reconnect this account before the next publish.'}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
