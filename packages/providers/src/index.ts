@@ -632,17 +632,7 @@ export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAda
       }
 
       // Step 2: Publish the container
-      return jsonFetch(
-        `https://graph.facebook.com/v20.0/${encodeURIComponent(igUserId)}/media_publish`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: formBody({
-            creation_id: containerId,
-            access_token: input.accessToken,
-          }),
-        },
-      );
+      return this.publishContainerWithRetry(igUserId, containerId, input.accessToken);
     }
 
     // Carousel (multiple images/videos)
@@ -706,17 +696,7 @@ export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAda
     }
 
     // Publish carousel
-    return jsonFetch(
-      `https://graph.facebook.com/v20.0/${encodeURIComponent(igUserId)}/media_publish`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: formBody({
-          creation_id: carouselId,
-          access_token: input.accessToken,
-        }),
-      },
-    );
+    return this.publishContainerWithRetry(igUserId, carouselId, input.accessToken);
   }
 
   /** Poll an IG media container until status is FINISHED (or timeout). */
@@ -738,6 +718,38 @@ export class InstagramAdapter implements ProviderAuthAdapter, ProviderPublishAda
       await new Promise((r) => setTimeout(r, 3000));
     }
     return { ok: false, status: 408, body: { error: 'ig_container_poll_timeout', containerId } };
+  }
+
+  private async publishContainerWithRetry(
+    igUserId: string,
+    containerId: string,
+    accessToken: string,
+    maxAttempts = 5,
+  ): Promise<PublishResult> {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const publishRes = await jsonFetch(
+        `https://graph.facebook.com/v20.0/${encodeURIComponent(igUserId)}/media_publish`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: formBody({
+            creation_id: containerId,
+            access_token: accessToken,
+          }),
+        },
+      );
+
+      const error = asRecord(publishRes.body).error as Record<string, unknown> | undefined;
+      const code = typeof error?.code === 'number' ? error.code : undefined;
+      const subcode = typeof error?.error_subcode === 'number' ? error.error_subcode : undefined;
+      if (publishRes.ok || code !== 9007 || subcode !== 2207027 || attempt === maxAttempts - 1) {
+        return publishRes;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    return { ok: false, status: 408, body: { error: 'ig_media_publish_retry_exhausted', containerId } };
   }
 }
 

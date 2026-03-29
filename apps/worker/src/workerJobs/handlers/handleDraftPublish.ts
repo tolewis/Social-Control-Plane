@@ -33,6 +33,21 @@ interface PublishResult {
   body: unknown;
 }
 
+function resolvePublicUploadBase(): string {
+  const webBase = process.env.WEB_BASE_URL?.trim().replace(/\/$/, '');
+  const explicitPublicBase = process.env.PUBLIC_URL?.trim().replace(/\/$/, '');
+  const appBase = process.env.APP_BASE_URL?.trim().replace(/\/$/, '');
+
+  if (webBase) return `${webBase}/backend`;
+  if (explicitPublicBase && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(explicitPublicBase)) {
+    return explicitPublicBase;
+  }
+  if (appBase && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(appBase)) {
+    return appBase;
+  }
+  return 'http://localhost:4001';
+}
+
 interface ProviderPublishAdapter {
   buildPublishRequest(input: {
     accessToken: string;
@@ -286,7 +301,7 @@ export async function handleDraftPublish(
       const mediaRecords = await db.media.findMany({
         where: { id: { in: mediaIds } },
       });
-      const publicBase = (process.env.PUBLIC_URL || process.env.APP_BASE_URL || 'http://localhost:4001').replace(/\/$/, '');
+      const publicBase = resolvePublicUploadBase();
       mediaAttachments = mediaRecords.map((m) => ({
         id: m.id,
         mimeType: m.mimeType,
