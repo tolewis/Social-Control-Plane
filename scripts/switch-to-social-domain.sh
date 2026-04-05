@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Switch SCP from social-plane.teamlewis.co to social.teamlewis.co
-# Run this AFTER updating Nginx Proxy Manager to point social.teamlewis.co at SCP
+# Switch SCP redirect URIs from one domain to another
+# Run this AFTER updating your reverse proxy to point the new domain at SCP
 
-ENV_FILE="/opt/scp/.env"
-OLD_DOMAIN="social-plane.teamlewis.co"
-NEW_DOMAIN="social.teamlewis.co"
+ENV_FILE="${SCP_ENV_FILE:-/opt/scp/.env}"
+OLD_DOMAIN="${1:?Usage: $0 <old-domain> <new-domain>}"
+NEW_DOMAIN="${2:?Usage: $0 <old-domain> <new-domain>}"
 
 echo "Switching SCP redirect URIs: $OLD_DOMAIN → $NEW_DOMAIN"
 
@@ -22,5 +22,5 @@ echo "Done. Verify at https://$NEW_DOMAIN"
 echo ""
 echo "Remaining manual steps:"
 echo "  1. Update each provider's OAuth redirect URL in their developer portal"
-echo "  2. Remove old social-plane.teamlewis.co proxy host from NPM"
-echo "  3. Optionally keep social-plane.teamlewis.co as a redirect to social.teamlewis.co"
+echo "  2. Remove old $OLD_DOMAIN proxy host from NPM"
+echo "  3. Optionally keep $OLD_DOMAIN as a redirect to $NEW_DOMAIN"

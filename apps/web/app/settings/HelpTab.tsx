@@ -173,7 +173,7 @@ function DocContent({ section }: { section: DocSection }) {
       return (
         <div className="helpDoc">
           <h3>API Reference</h3>
-          <p>Base URL: <code className="mono">https://social-plane.teamlewis.co/backend</code></p>
+          <p>Base URL: <code className="mono">{typeof window !== 'undefined' ? window.location.origin : ''}/backend</code></p>
           <p>Authentication: Bearer token (login token or API key with <code className="mono">scp_</code> prefix).</p>
 
           <h4>Connections</h4>

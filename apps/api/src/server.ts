@@ -403,7 +403,7 @@ app.put('/providers/:provider/config', async (request, reply) => {
   }).parse(request.body);
 
   const provider = params.provider;
-  const redirectUri = body.redirectUri || envRedirectUri(provider) || `https://social-plane.teamlewis.co/integrations/${provider}/callback`;
+  const redirectUri = body.redirectUri || envRedirectUri(provider) || `${process.env.PUBLIC_URL || 'http://localhost:3000'}/integrations/${provider}/callback`;
 
   await prisma.providerConfig.upsert({
     where: { provider },

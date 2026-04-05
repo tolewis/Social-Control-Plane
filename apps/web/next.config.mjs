@@ -8,7 +8,7 @@ const monorepoRoot = realpathSync(resolve(__dirname, '../..'));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ['192.168.0.114', 'social-plane.teamlewis.co'],
+  allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS || '').split(',').filter(Boolean),
   turbopack: {
     root: monorepoRoot,
   },

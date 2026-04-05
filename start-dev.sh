@@ -25,8 +25,8 @@ case "${1:-all}" in
     echo "Starting Web..."
     bash "$0" web &>/tmp/scp-web.log &
     echo "All services starting. Logs in /tmp/scp-*.log"
-    echo "API: http://192.168.0.114:4001"
-    echo "Web: http://192.168.0.114:3000"
+    echo "API: http://localhost:4001"
+    echo "Web: http://localhost:3000"
     wait
     ;;
 esac

@@ -2,13 +2,11 @@
 
 Status: Pre-1.0 — integration onboarding complete, end-to-end publish MVP next
 Version: 0.9 (1.0 = successful end-to-end social post from the service)
-Owner: Tim + Katya
 Created: 2026-03-16
 Mode: Internal tool first
 Desktop + mobile first
 Secrets: DB-encrypted (AES-256-GCM) with .env fallback
 Style direction: Contractor-AI-inspired layout/feel (not colors)
-Live at: https://social-plane.teamlewis.co (auth-gated)
 
 ## Goal
 Build an agent-safe social publishing platform to replace the fragile parts of Postiz.
@@ -68,7 +66,7 @@ Do **not** build a Postiz clone monolith. Build a narrower, tougher product arou
 - `docker-compose.dev.yml` — Postgres + Redis for local dev
 
 ## Production deployment
-Running on 192.168.0.114 via PM2 (3 services: scp-api, scp-web, scp-worker).
+Running via PM2 (3 services: scp-api, scp-web, scp-worker).
 Reverse-proxied through Nginx Proxy Manager with Let's Encrypt cert.
 
 ## What's built (as of 2026-03-21)
