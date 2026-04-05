@@ -1,5 +1,6 @@
 import type { TemplateName, TemplateDataMap } from './types.js';
 import { waterTempsTemplate } from './water-temps.js';
+import { speciesReportTemplate } from './species-report.js';
 import type { ReactNode } from 'react';
 
 /** Template render functions. Each takes typed data and returns Satori JSX. */
@@ -7,6 +8,7 @@ const templates: {
   [K in TemplateName]: (data: TemplateDataMap[K]) => ReactNode;
 } = {
   'water-temps': waterTempsTemplate,
+  'species-report': speciesReportTemplate,
 };
 
 /**
@@ -26,3 +28,4 @@ export function buildTemplate<K extends TemplateName>(
 
 export { type TemplateName, type TemplateDataMap } from './types.js';
 export { type WaterTempsData, type WaterTempRegion } from './types.js';
+export { type SpeciesReportData, type SpeciesEntry } from './types.js';

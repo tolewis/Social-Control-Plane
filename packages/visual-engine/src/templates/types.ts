@@ -31,6 +31,40 @@ export interface WaterTempsData {
 /** Registry of all template names → their data types. */
 export interface TemplateDataMap {
   'water-temps': WaterTempsData;
+  'species-report': SpeciesReportData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
+
+// ─── Species Report ─────────────────────────────────────────────────────────
+
+/** A single species entry in the report. */
+export interface SpeciesEntry {
+  /** Species name, e.g. "King Mackerel" */
+  name: string;
+  /** Activity level: hot, active, slow, or off */
+  status: 'hot' | 'active' | 'slow' | 'off';
+  /** Where they're being caught, e.g. "Nearshore wrecks, 60-80ft" */
+  where?: string;
+  /** What's working, e.g. "Live pogies, slow trolled" */
+  bait?: string;
+  /** Optional extra note */
+  note?: string;
+}
+
+/** Input data for the species-report template. */
+export interface SpeciesReportData {
+  /** Region/location, e.g. "Outer Banks, NC" */
+  region: string;
+  /** Date label, e.g. "Week of April 5, 2026" */
+  weekOf: string;
+  /** Water temp if available */
+  waterTemp?: string;
+  /** Species entries, ordered by activity */
+  species: SpeciesEntry[];
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
+  sourceUrl?: string;
+  logoFile?: string;
+}

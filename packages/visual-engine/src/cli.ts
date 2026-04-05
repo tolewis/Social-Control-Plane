@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -28,6 +28,19 @@ const SAMPLE_DATA: Record<string, unknown> = {
       { name: 'Jacksonville, FL', tempFrom: 64, tempTo: 68, delta: 3.9 },
     ],
   } satisfies WaterTempsData,
+
+  'species-report': {
+    region: 'Outer Banks, NC',
+    weekOf: 'Week of April 5, 2026',
+    waterTemp: '66°F',
+    species: [
+      { name: 'King Mackerel', status: 'hot', where: 'Nearshore wrecks, 60-80ft', bait: 'Live pogies, slow trolled', note: 'Best bite at first light' },
+      { name: 'Cobia', status: 'active', where: 'Buoys & channel edges', bait: 'Live eels, sight cast', note: 'Just showed up this week' },
+      { name: 'Red Drum', status: 'active', where: 'Inlet flats, oyster bars', bait: 'Cut mullet, Carolina rig' },
+      { name: 'Flounder', status: 'slow', where: 'Nearshore structure', bait: 'Bucktails w/ Gulp' },
+      { name: 'Spanish Mackerel', status: 'off', note: 'Not here yet — water needs 68°F+' },
+    ],
+  } satisfies SpeciesReportData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────
@@ -52,7 +65,7 @@ async function main() {
 
   const templateName = args[1] as TemplateName;
   if (!templateName) {
-    console.error('Missing template name. Available: water-temps');
+    console.error('Missing template name. Available: water-temps, species-report');
     process.exit(1);
   }
 

@@ -7,6 +7,8 @@ export type {
   TemplateDataMap,
   WaterTempsData,
   WaterTempRegion,
+  SpeciesReportData,
+  SpeciesEntry,
 } from './templates/types.js';
 
 import { buildTemplate } from './templates/index.js';

@@ -1,29 +1,10 @@
 import type { WaterTempsData, WaterTempRegion } from './types.js';
-import { loadAssetDataUri } from '../assets.js';
-
-// ─── Brand constants ────────────────────────────────────────────────────────
-// These are locked — agents cannot override them via prompt.
-
-const COLORS = {
-  bg: '#0B1929',
-  bgGradientEnd: '#0F1F33',
-  headline: '#FF6B35',
-  regionName: '#FFFFFF',
-  tempRange: '#7A8FA8',
-  deltaPositive: '#4ADE80',
-  deltaNegative: '#F87171',
-  species: '#5BAE6B',
-  brandName: '#FFFFFF',
-  tagline: '#6B7F99',
-  divider: '#FF6B35',
-  sourceUrl: '#6B7F99',
-  rowDivider: '#1A2D45',
-} as const;
+import { BRAND, BrandFooter } from './brand.js';
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 function RegionRow({ region, isLast }: { region: WaterTempRegion; isLast: boolean }) {
-  const deltaColor = region.delta >= 0 ? COLORS.deltaPositive : COLORS.deltaNegative;
+  const deltaColor = region.delta >= 0 ? BRAND.colors.green : BRAND.colors.red;
   const deltaSign = region.delta >= 0 ? '+' : '';
 
   return (
@@ -31,7 +12,7 @@ function RegionRow({ region, isLast }: { region: WaterTempRegion; isLast: boolea
       display: 'flex',
       flexDirection: 'column',
       width: '100%',
-      borderBottom: isLast ? 'none' : `1px solid ${COLORS.rowDivider}`,
+      borderBottom: isLast ? 'none' : `1px solid ${BRAND.colors.rowDivider}`,
       padding: '22px 0',
     }}>
       <div style={{
@@ -48,7 +29,7 @@ function RegionRow({ region, isLast }: { region: WaterTempRegion; isLast: boolea
           <span style={{
             fontSize: 38,
             fontWeight: 700,
-            color: COLORS.regionName,
+            color: BRAND.colors.white,
             lineHeight: 1.2,
           }}>
             {region.name}
@@ -82,14 +63,14 @@ function RegionRow({ region, isLast }: { region: WaterTempRegion; isLast: boolea
       }}>
         <span style={{
           fontSize: 22,
-          color: COLORS.tempRange,
+          color: BRAND.colors.muted,
         }}>
           {region.tempFrom}°F  →  {region.tempTo}°F
         </span>
         {region.species && (
           <span style={{
             fontSize: 22,
-            color: COLORS.species,
+            color: BRAND.colors.species,
             fontWeight: 400,
           }}>
             {region.species}
@@ -103,17 +84,7 @@ function RegionRow({ region, isLast }: { region: WaterTempRegion; isLast: boolea
 // ─── Main template ──────────────────────────────────────────────────────────
 
 export function waterTempsTemplate(data: WaterTempsData) {
-  const brandName = data.brandName ?? 'THE TACKLE ROOM';
-  const tagline = data.tagline ?? '16 saltwater regions  |  Free weekly forecast';
-  const sourceUrl = data.sourceUrl ?? 'tackleroomsupply.com/forecast';
-
-  // Try loading logo — gracefully degrade if not present
-  let logoSrc: string | null = null;
-  try {
-    logoSrc = loadAssetDataUri(data.logoFile ?? 'logo.svg');
-  } catch {
-    // No logo file — skip it
-  }
+  const sourceUrl = data.sourceUrl ?? BRAND.defaults.sourceUrl;
 
   return (
     <div style={{
@@ -121,9 +92,9 @@ export function waterTempsTemplate(data: WaterTempsData) {
       flexDirection: 'column',
       width: '100%',
       height: '100%',
-      background: `linear-gradient(180deg, ${COLORS.bg} 0%, ${COLORS.bgGradientEnd} 100%)`,
+      background: `linear-gradient(180deg, ${BRAND.colors.bg} 0%, ${BRAND.colors.bgGradientEnd} 100%)`,
       padding: '64px 60px',
-      fontFamily: 'Inter',
+      fontFamily: BRAND.fonts.family,
     }}>
 
       {/* ── Header ── */}
@@ -135,7 +106,7 @@ export function waterTempsTemplate(data: WaterTempsData) {
         <span style={{
           fontSize: 84,
           fontWeight: 900,
-          color: COLORS.headline,
+          color: BRAND.colors.headline,
           lineHeight: 1.05,
           letterSpacing: '-2px',
         }}>
@@ -144,7 +115,7 @@ export function waterTempsTemplate(data: WaterTempsData) {
         <span style={{
           fontSize: 84,
           fontWeight: 900,
-          color: COLORS.headline,
+          color: BRAND.colors.headline,
           lineHeight: 1.05,
           letterSpacing: '-2px',
         }}>
@@ -152,7 +123,7 @@ export function waterTempsTemplate(data: WaterTempsData) {
         </span>
         <span style={{
           fontSize: 22,
-          color: COLORS.sourceUrl,
+          color: BRAND.colors.tagline,
           marginTop: 16,
         }}>
           {data.weekOf}  |  {sourceUrl}
@@ -170,48 +141,13 @@ export function waterTempsTemplate(data: WaterTempsData) {
         ))}
       </div>
 
-      {/* ── Divider ── */}
-      <div style={{
-        display: 'flex',
-        width: '100%',
-        height: 3,
-        background: COLORS.divider,
-        marginTop: 16,
-        marginBottom: 20,
-      }} />
-
-      {/* ── Footer: brand + logo ── */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{
-            fontSize: 34,
-            fontWeight: 800,
-            color: COLORS.brandName,
-            letterSpacing: '3px',
-          }}>
-            {brandName}
-          </span>
-          <span style={{
-            fontSize: 18,
-            color: COLORS.tagline,
-            marginTop: 6,
-          }}>
-            {tagline}
-          </span>
-        </div>
-        {logoSrc && (
-          <img
-            src={logoSrc}
-            width={110}
-            height={110}
-            style={{ borderRadius: 55 }}
-          />
-        )}
+      {/* ── Footer ── */}
+      <div style={{ display: 'flex', marginTop: 16 }}>
+        <BrandFooter
+          brandName={data.brandName}
+          tagline={data.tagline}
+          logoFile={data.logoFile}
+        />
       </div>
     </div>
   );
