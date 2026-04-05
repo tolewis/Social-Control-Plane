@@ -1392,17 +1392,24 @@ app.post('/publish/:draftId', async (request, reply) => {
   }
 
   // --- Rate limit: one active job per connection ---
-  const activeJob = await prisma.publishJob.findFirst({
+  // Instead of hard-rejecting, we queue the job and let the worker serialize
+  // via account locks. This makes the API agent-friendly — agents can submit
+  // many drafts without managing their own retry/poll loop.
+  //
+  // We still check for duplicates: if THIS EXACT draft already has a pending
+  // job, reject it (idempotency). But other drafts on the same connection
+  // are allowed to queue up.
+  const existingJobForDraft = await prisma.publishJob.findFirst({
     where: {
-      connectionId: draft.connectionId,
+      draftId: draft.id,
       status: { in: ['PENDING', 'PROCESSING'] },
     },
   });
-  if (activeJob) {
-    return reply.code(429).send({
-      error: 'rate_limited',
-      message: 'An active publish job already exists for this connection. Wait for it to complete.',
-      activeJobId: activeJob.id,
+  if (existingJobForDraft) {
+    return reply.code(409).send({
+      error: 'already_queued',
+      message: 'This draft already has an active publish job.',
+      activeJobId: existingJobForDraft.id,
     });
   }
 
@@ -1490,6 +1497,108 @@ app.post('/publish/:draftId', async (request, reply) => {
   await audit('job', job.id, 'enqueued', { draftId: draft.id, connectionId: draft.connectionId });
 
   return responsePayload;
+});
+
+// ---------------------------------------------------------------------------
+// Batch publish — agent-friendly: submit many drafts in one call
+// ---------------------------------------------------------------------------
+app.post('/publish/batch', async (request, reply) => {
+  const body = z.object({
+    draftIds: z.array(z.string().min(1)).min(1).max(50),
+  }).parse(request.body);
+
+  const results: Array<{
+    draftId: string;
+    status: 'queued' | 'skipped';
+    jobId?: string;
+    reason?: string;
+  }> = [];
+
+  for (const draftId of body.draftIds) {
+    const draft = await prisma.draft.findUnique({ where: { id: draftId } });
+    if (!draft) {
+      results.push({ draftId, status: 'skipped', reason: 'draft_not_found' });
+      continue;
+    }
+
+    // Skip if already queued/processing
+    const existingJob = await prisma.publishJob.findFirst({
+      where: { draftId, status: { in: ['PENDING', 'PROCESSING'] } },
+    });
+    if (existingJob) {
+      results.push({ draftId, status: 'skipped', reason: 'already_queued' });
+      continue;
+    }
+
+    // Skip if already published
+    if (draft.status === 'published') {
+      results.push({ draftId, status: 'skipped', reason: 'already_published' });
+      continue;
+    }
+
+    // Clean up stale jobs
+    const staleJobs = await prisma.publishJob.findMany({
+      where: { draftId, status: { in: ['PENDING', 'PROCESSING'] } },
+    });
+    for (const sj of staleJobs) {
+      try {
+        const bullJob = await publishQueue.getJob(sj.id);
+        if (bullJob) await bullJob.remove();
+      } catch { /* best effort */ }
+    }
+    if (staleJobs.length > 0) {
+      await prisma.publishJob.updateMany({
+        where: { draftId, status: { in: ['PENDING', 'PROCESSING'] } },
+        data: { status: 'CANCELED', updatedAt: new Date() },
+      });
+    }
+
+    const idemKey = randomUUID();
+    const job = await prisma.publishJob.create({
+      data: {
+        draftId,
+        connectionId: draft.connectionId,
+        status: 'PENDING',
+        idempotencyKey: idemKey,
+      },
+    });
+
+    await prisma.draft.update({
+      where: { id: draftId },
+      data: { status: 'queued' },
+    });
+
+    const connection = await prisma.socialConnection.findUnique({
+      where: { id: draft.connectionId },
+    });
+
+    await publishQueue.add(
+      'draft.publish',
+      {
+        accountId: draft.connectionId,
+        draftId,
+        connectionId: draft.connectionId,
+        provider: connection?.provider ?? 'linkedin',
+        publishMode: draft.publishMode,
+        idempotencyKey: idemKey,
+      },
+      {
+        jobId: job.id,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    );
+
+    await audit('job', job.id, 'enqueued', { draftId, connectionId: draft.connectionId, batch: true });
+    results.push({ draftId, status: 'queued', jobId: job.id });
+  }
+
+  return {
+    total: body.draftIds.length,
+    queued: results.filter(r => r.status === 'queued').length,
+    skipped: results.filter(r => r.status === 'skipped').length,
+    results,
+  };
 });
 
 // ---------------------------------------------------------------------------
