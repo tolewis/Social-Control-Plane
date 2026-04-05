@@ -15,6 +15,8 @@ export type {
   CatchOfTheWeekData,
   ProductSpotlightData,
   ProductSpec,
+  TournamentResultsData,
+  TournamentEntry,
 } from './templates/types.js';
 
 import { buildTemplate } from './templates/index.js';

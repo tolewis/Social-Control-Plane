@@ -35,6 +35,7 @@ export interface TemplateDataMap {
   'tide-chart': TideChartData;
   'catch-of-the-week': CatchOfTheWeekData;
   'product-spotlight': ProductSpotlightData;
+  'tournament-results': TournamentResultsData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
@@ -159,6 +160,40 @@ export interface ProductSpotlightData {
   pitch?: string;
   /** In stock status */
   inStock?: boolean;
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
+  logoFile?: string;
+}
+
+// ─── Tournament Results ─────────────────────────────────────────────────────
+
+/** A single leaderboard entry. */
+export interface TournamentEntry {
+  /** Rank, e.g. 1, 2, 3 */
+  rank: number;
+  /** Angler/team name */
+  name: string;
+  /** Species, e.g. "King Mackerel" */
+  species?: string;
+  /** Weight, e.g. "38.4 lbs" */
+  weight: string;
+  /** Optional note, e.g. "New record" */
+  note?: string;
+}
+
+/** Input data for the tournament-results template. */
+export interface TournamentResultsData {
+  /** Tournament name, e.g. "OBX King Classic" */
+  tournamentName: string;
+  /** Date/year, e.g. "April 5, 2026" */
+  date: string;
+  /** Location */
+  location?: string;
+  /** Leaderboard entries, ordered by rank */
+  leaderboard: TournamentEntry[];
+  /** Total boats/anglers, e.g. "42 boats" */
+  totalParticipants?: string;
   /** Optional brand overrides */
   brandName?: string;
   tagline?: string;

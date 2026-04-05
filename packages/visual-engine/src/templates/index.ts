@@ -4,6 +4,7 @@ import { speciesReportTemplate } from './species-report.js';
 import { tideChartTemplate } from './tide-chart.js';
 import { catchOfTheWeekTemplate } from './catch-of-the-week.js';
 import { productSpotlightTemplate } from './product-spotlight.js';
+import { tournamentResultsTemplate } from './tournament-results.js';
 import type { ReactNode } from 'react';
 
 /** Template render functions. Each takes typed data and returns Satori JSX. */
@@ -15,6 +16,7 @@ const templates: {
   'tide-chart': tideChartTemplate,
   'catch-of-the-week': catchOfTheWeekTemplate,
   'product-spotlight': productSpotlightTemplate,
+  'tournament-results': tournamentResultsTemplate,
 };
 
 /**
@@ -38,3 +40,4 @@ export { type SpeciesReportData, type SpeciesEntry } from './types.js';
 export { type TideChartData, type TideDay, type TideEvent } from './types.js';
 export { type CatchOfTheWeekData } from './types.js';
 export { type ProductSpotlightData, type ProductSpec } from './types.js';
+export { type TournamentResultsData, type TournamentEntry } from './types.js';

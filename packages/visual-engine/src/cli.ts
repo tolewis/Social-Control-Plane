@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData, ProductSpotlightData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData, ProductSpotlightData, TournamentResultsData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -79,6 +79,21 @@ const SAMPLE_DATA: Record<string, unknown> = {
     ],
     pitch: 'Built for the salt. The Saragosa handles everything from king rigs to bottom fishing — bombproof drag, sealed body, and it still weighs under a pound.',
   } satisfies ProductSpotlightData,
+
+  'tournament-results': {
+    tournamentName: 'OBX King Classic',
+    date: 'April 5, 2026',
+    location: 'Oregon Inlet, NC',
+    totalParticipants: '42 boats',
+    leaderboard: [
+      { rank: 1, name: 'Team Bite Me', species: 'King Mackerel', weight: '38.4 lbs', note: 'New record!' },
+      { rank: 2, name: 'Reel Therapy', species: 'King Mackerel', weight: '34.1 lbs' },
+      { rank: 3, name: 'Fish Whistle', species: 'King Mackerel', weight: '31.8 lbs' },
+      { rank: 4, name: 'No Quarter', species: 'King Mackerel', weight: '29.2 lbs' },
+      { rank: 5, name: 'Salt Life', species: 'King Mackerel', weight: '27.6 lbs' },
+      { rank: 6, name: 'Lucky Strike', species: 'King Mackerel', weight: '25.3 lbs' },
+    ],
+  } satisfies TournamentResultsData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────
