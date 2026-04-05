@@ -71,6 +71,19 @@ model Draft {
   updatedAt      DateTime @updatedAt
   connection     SocialConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   jobs           PublishJob[]
+  visualSpecs    VisualSpec[]
+}
+
+model VisualSpec {
+  id               String   @id @default(cuid())
+  draftId          String
+  draft            Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  templateName     String
+  templateData     Json
+  generatedMediaId String?
+  validated        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model PublishJob {

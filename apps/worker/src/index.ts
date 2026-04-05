@@ -77,6 +77,10 @@ async function main(): Promise<void> {
             return await handlers['draft.cancel'](
               job as Job<JobNameToData['draft.cancel'], unknown, 'draft.cancel'>,
             );
+          case 'draft.generate-visual':
+            return await handlers['draft.generate-visual'](
+              job as Job<JobNameToData['draft.generate-visual'], unknown, 'draft.generate-visual'>,
+            );
           default: {
             // Defensive; should be unreachable due to isScpJobName.
             // eslint-disable-next-line @typescript-eslint/restrict-template-expressions

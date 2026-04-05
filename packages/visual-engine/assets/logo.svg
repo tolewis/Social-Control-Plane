@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" rx="100" fill="#0B1929"/>
+  <text x="100" y="78" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="42" fill="#1B3A5C" letter-spacing="3">TACKLE</text>
+  <text x="100" y="118" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="36" fill="#1B3A5C" letter-spacing="5">ROOM</text>
+  <!-- Stylized C / marlin swoosh -->
+  <path d="M78 30 Q45 55 50 90 Q55 125 88 140" stroke="#40E0D0" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M78 30 L72 18 L85 28 Z" fill="#40E0D0"/>
+  <text x="100" y="158" text-anchor="middle" font-family="Arial, sans-serif" font-weight="400" font-size="14" fill="#6B7F99" letter-spacing="4">FISHING SUPPLY</text>
+</svg>

@@ -36,6 +36,9 @@ importers:
       '@scp/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@scp/visual-engine':
+        specifier: workspace:*
+        version: link:../../packages/visual-engine
       bullmq:
         specifier: ^5.34.8
         version: 5.71.0
@@ -98,6 +101,9 @@ importers:
       '@scp/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@scp/visual-engine':
+        specifier: workspace:*
+        version: link:../../packages/visual-engine
       bullmq:
         specifier: ^5.43.1
         version: 5.71.0

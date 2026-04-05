@@ -28,10 +28,18 @@ export type DraftCancelJobData = {
   reason?: string;
 };
 
+export type DraftGenerateVisualJobData = {
+  accountId: string;
+  draftId: string;
+  templateName: string;
+  templateData: Record<string, unknown>;
+};
+
 export type JobNameToData = {
   'draft.publish': DraftPublishJobData;
   'draft.reconcile': DraftReconcileJobData;
   'draft.cancel': DraftCancelJobData;
+  'draft.generate-visual': DraftGenerateVisualJobData;
 };
 
 export type ScpJobName = keyof JobNameToData;
@@ -46,6 +54,7 @@ const JOB_NAMES: ReadonlySet<string> = new Set<string>([
   'draft.publish',
   'draft.reconcile',
   'draft.cancel',
+  'draft.generate-visual',
 ]);
 
 export function isScpJobName(name: string): name is ScpJobName {

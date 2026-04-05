@@ -110,7 +110,7 @@ export function waterTempsTemplate(data: WaterTempsData) {
   // Try loading logo — gracefully degrade if not present
   let logoSrc: string | null = null;
   try {
-    logoSrc = loadAssetDataUri(data.logoFile ?? 'logo.png');
+    logoSrc = loadAssetDataUri(data.logoFile ?? 'logo.svg');
   } catch {
     // No logo file — skip it
   }

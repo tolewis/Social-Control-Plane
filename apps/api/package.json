@@ -17,6 +17,7 @@
     "@prisma/client": "6.4.1",
     "@scp/providers": "workspace:*",
     "@scp/shared": "workspace:*",
+    "@scp/visual-engine": "workspace:*",
     "bullmq": "^5.34.8",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",

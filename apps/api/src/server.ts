@@ -1256,6 +1256,78 @@ app.post('/drafts/:id/back-to-draft', async (request, reply) => {
 });
 
 // ---------------------------------------------------------------------------
+// Visual generation — render infographic from template + data
+// ---------------------------------------------------------------------------
+app.post('/drafts/:id/generate-visual', async (request, reply) => {
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const body = z.object({
+    templateName: z.string().min(1),
+    templateData: z.record(z.unknown()),
+  }).parse(request.body);
+
+  const draft = await prisma.draft.findUnique({ where: { id: params.id } });
+  if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
+
+  // Lazy-import visual-engine to avoid hard dep at startup
+  const { generateInfographic } = await import('@scp/visual-engine');
+
+  const buf = await generateInfographic(
+    body.templateName as any,
+    body.templateData as any,
+  );
+
+  // Save as Media entry
+  const filename = `visual-${params.id}-${Date.now()}.png`;
+  const storagePath = join(UPLOADS_DIR, filename);
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(storagePath, buf);
+
+  const media = await prisma.media.create({
+    data: {
+      filename,
+      originalName: `${body.templateName}.png`,
+      mimeType: 'image/png',
+      sizeBytes: buf.length,
+      storagePath,
+      width: 1080,
+      height: 1350,
+    },
+  });
+
+  // Create VisualSpec record
+  await prisma.visualSpec.create({
+    data: {
+      draftId: params.id,
+      templateName: body.templateName,
+      templateData: body.templateData,
+      generatedMediaId: media.id,
+    },
+  });
+
+  // Append to draft's mediaJson
+  const existingMedia = Array.isArray(draft.mediaJson) ? (draft.mediaJson as string[]) : [];
+  await prisma.draft.update({
+    where: { id: params.id },
+    data: {
+      mediaJson: [...existingMedia, media.id],
+      updatedAt: new Date(),
+    },
+  });
+
+  await audit('draft', params.id, 'visual_generated', {
+    templateName: body.templateName,
+    mediaId: media.id,
+  });
+
+  return {
+    mediaId: media.id,
+    url: `/uploads/${filename}`,
+    templateName: body.templateName,
+    sizeBytes: buf.length,
+  };
+});
+
+// ---------------------------------------------------------------------------
 // Publish — enqueue via BullMQ + rate limit per connection
 // ---------------------------------------------------------------------------
 app.post('/publish/:draftId', async (request, reply) => {

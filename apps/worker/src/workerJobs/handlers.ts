@@ -4,6 +4,7 @@ import type { DbClient } from '../db.js';
 import type { Logger } from '../workerLogger.js';
 import type { JobNameToData, ScpJobName } from './types.js';
 import { handleDraftCancel } from './handlers/handleDraftCancel.js';
+import { handleDraftGenerateVisual } from './handlers/handleDraftGenerateVisual.js';
 import { handleDraftPublish } from './handlers/handleDraftPublish.js';
 import { handleDraftReconcile } from './handlers/handleDraftReconcile.js';
 
@@ -18,5 +19,6 @@ export function createJobHandlers(ctx: { log: Logger; queue: Queue; db: DbClient
     'draft.publish': (job) => handleDraftPublish(job, ctx),
     'draft.reconcile': (job) => handleDraftReconcile(job, ctx),
     'draft.cancel': (job) => handleDraftCancel(job, ctx),
+    'draft.generate-visual': (job) => handleDraftGenerateVisual(job, ctx),
   };
 }
