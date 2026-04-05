@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData, SpeciesReportData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData, TideChartData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -41,6 +41,18 @@ const SAMPLE_DATA: Record<string, unknown> = {
       { name: 'Spanish Mackerel', status: 'off', note: 'Not here yet — water needs 68°F+' },
     ],
   } satisfies SpeciesReportData,
+
+  'tide-chart': {
+    location: 'Oregon Inlet, NC',
+    dateRange: 'April 7–13, 2026',
+    days: [
+      { label: 'Mon 4/7', tides: [{ type: 'high', time: '6:14 AM', heightFt: 3.8 }, { type: 'low', time: '12:31 PM', heightFt: 0.4 }, { type: 'high', time: '6:42 PM', heightFt: 4.1 }], bestWindow: '5:30–7:30 AM', note: 'Incoming — best for reds' },
+      { label: 'Tue 4/8', tides: [{ type: 'high', time: '7:02 AM', heightFt: 3.6 }, { type: 'low', time: '1:18 PM', heightFt: 0.6 }, { type: 'high', time: '7:28 PM', heightFt: 3.9 }], bestWindow: '6:15–8:15 AM' },
+      { label: 'Wed 4/9', tides: [{ type: 'high', time: '7:48 AM', heightFt: 3.4 }, { type: 'low', time: '2:04 PM', heightFt: 0.8 }, { type: 'high', time: '8:12 PM', heightFt: 3.7 }], bestWindow: '7:00–9:00 AM', note: 'Neap tide — weaker movement' },
+      { label: 'Thu 4/10', tides: [{ type: 'high', time: '8:33 AM', heightFt: 3.2 }, { type: 'low', time: '2:48 PM', heightFt: 1.0 }, { type: 'high', time: '8:55 PM', heightFt: 3.5 }], bestWindow: '7:45–9:45 AM' },
+      { label: 'Fri 4/11', tides: [{ type: 'high', time: '9:18 AM', heightFt: 3.1 }, { type: 'low', time: '3:32 PM', heightFt: 1.1 }, { type: 'high', time: '9:38 PM', heightFt: 3.3 }], bestWindow: '8:30–10:30 AM' },
+    ],
+  } satisfies TideChartData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────

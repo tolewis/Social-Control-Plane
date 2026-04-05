@@ -9,6 +9,9 @@ export type {
   WaterTempRegion,
   SpeciesReportData,
   SpeciesEntry,
+  TideChartData,
+  TideDay,
+  TideEvent,
 } from './templates/types.js';
 
 import { buildTemplate } from './templates/index.js';

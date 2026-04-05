@@ -32,6 +32,7 @@ export interface WaterTempsData {
 export interface TemplateDataMap {
   'water-temps': WaterTempsData;
   'species-report': SpeciesReportData;
+  'tide-chart': TideChartData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
@@ -62,6 +63,45 @@ export interface SpeciesReportData {
   waterTemp?: string;
   /** Species entries, ordered by activity */
   species: SpeciesEntry[];
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
+  sourceUrl?: string;
+  logoFile?: string;
+}
+
+// ─── Tide Chart ─────────────────────────────────────────────────────────────
+
+/** A single tide event (high or low). */
+export interface TideEvent {
+  /** "high" or "low" */
+  type: 'high' | 'low';
+  /** Time string, e.g. "6:14 AM" */
+  time: string;
+  /** Height in feet, e.g. 4.2 */
+  heightFt: number;
+}
+
+/** A single day's tide data. */
+export interface TideDay {
+  /** Day label, e.g. "Mon 4/7" */
+  label: string;
+  /** Tide events for the day */
+  tides: TideEvent[];
+  /** Best fishing window, e.g. "5:30–7:30 AM" */
+  bestWindow?: string;
+  /** Optional note, e.g. "Incoming — best for reds" */
+  note?: string;
+}
+
+/** Input data for the tide-chart template. */
+export interface TideChartData {
+  /** Location, e.g. "Oregon Inlet, NC" */
+  location: string;
+  /** Date range, e.g. "April 7–13, 2026" */
+  dateRange: string;
+  /** Days of tide data */
+  days: TideDay[];
   /** Optional brand overrides */
   brandName?: string;
   tagline?: string;
