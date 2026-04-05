@@ -2,6 +2,8 @@
 
 This document defines how agents interact with the visual-engine to produce consistent, on-brand infographics for The Tackle Room. Copy the relevant sections into your agent's system prompt or reference them during content workflows.
 
+For a baseline reusable version that is not Tackle Room-specific, start with `SKILL.md` in this same folder.
+
 ## Core Rule
 
 **Never ask an image model to generate these graphics.** All infographics are rendered from structured data via `POST /drafts/:id/generate-visual`. The agent's job is to gather the right data, pick the right template, and format the API call. The visual-engine handles layout, fonts, colors, and branding.

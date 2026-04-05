@@ -62,12 +62,19 @@ Do **not** build a Postiz clone monolith. Build a narrower, tougher product arou
 - `apps/worker` — BullMQ publish worker with token refresh
 - `packages/shared` — shared types/contracts
 - `packages/providers` — provider auth adapters (X, LinkedIn, Facebook, Instagram) with credential injection
+- `packages/visual-engine` — structured-data infographic renderer + template system
 - `prisma/schema.prisma` — Postgres data model (Operator, ApiKey, Connection, Draft, PublishJob, Media, ProviderConfig)
 - `docker-compose.dev.yml` — Postgres + Redis for local dev
 
 ## Production deployment
 Running via PM2 (3 services: scp-api, scp-web, scp-worker).
 Reverse-proxied through Nginx Proxy Manager with Let's Encrypt cert.
+
+## Visual engine docs
+- Generic reusable skill: `packages/visual-engine/SKILL.md`
+- Tackle Room prompting guide: `packages/visual-engine/PROMPTING-GUIDE.md`
+
+If you are integrating visual generation into another agent or app, start with `packages/visual-engine/SKILL.md`.
 
 ## What's built (as of 2026-03-21)
 - Auth gate (HMAC bearer tokens, login page, middleware)
