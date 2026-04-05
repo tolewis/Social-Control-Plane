@@ -1,5 +1,5 @@
 import { resolve, join } from 'node:path';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import type { Job, Queue } from 'bullmq';
 
 import type { DbClient } from '../../db.js';
@@ -22,33 +22,42 @@ export async function handleDraftGenerateVisual(
   const draft = await db.draft.findUnique({ where: { id: draftId } });
   if (!draft) {
     log.error('draft.generate-visual.draft_not_found', { jobId: job.id, draftId });
-    return { ok: true };
+    throw new Error(`Draft not found: ${draftId}`);
   }
 
   await job.updateProgress({ step: 'rendering' });
 
-  // 2. Lazy-import visual-engine (avoids compile-time dep issues)
+  // 2. Ensure uploads directory exists
+  mkdirSync(UPLOADS_DIR, { recursive: true });
+
+  // 3. Lazy-import visual-engine (avoids compile-time dep issues)
   const modPath = '@scp/' + 'visual-engine';
   const { generateInfographic } = await import(/* webpackIgnore: true */ modPath) as {
     generateInfographic: (name: string, data: unknown) => Promise<Buffer>;
   };
 
-  // 3. Render
+  // 4. Render — let errors propagate so BullMQ retries the job
   let buf: Buffer;
   try {
     buf = await generateInfographic(templateName, templateData);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error('draft.generate-visual.render_error', { jobId: job.id, err: msg });
-    return { ok: true };
+    throw new Error(`Render failed for template "${templateName}": ${msg}`);
   }
 
   await job.updateProgress({ step: 'saving' });
 
-  // 4. Save to disk + Media record
+  // 5. Save to disk + Media record
   const filename = `visual-${draftId}-${Date.now()}.png`;
   const storagePath = join(UPLOADS_DIR, filename);
-  writeFileSync(storagePath, buf);
+  try {
+    writeFileSync(storagePath, buf);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.error('draft.generate-visual.write_error', { jobId: job.id, storagePath, err: msg });
+    throw new Error(`Failed to write image: ${msg}`);
+  }
 
   const media = await db.media.create({
     data: {
@@ -62,7 +71,7 @@ export async function handleDraftGenerateVisual(
     },
   });
 
-  // 5. Create VisualSpec + attach to draft
+  // 6. Create VisualSpec + attach to draft
   await db.visualSpec.create({
     data: {
       draftId,

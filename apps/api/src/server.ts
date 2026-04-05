@@ -1259,29 +1259,47 @@ app.post('/drafts/:id/back-to-draft', async (request, reply) => {
 // ---------------------------------------------------------------------------
 // Visual generation — render infographic from template + data
 // ---------------------------------------------------------------------------
+const VALID_TEMPLATES = ['water-temps', 'species-report', 'tide-chart', 'catch-of-the-week', 'product-spotlight', 'tournament-results', 'article-ad'] as const;
+
 app.post('/drafts/:id/generate-visual', async (request, reply) => {
   const params = z.object({ id: z.string().min(1) }).parse(request.params);
   const body = z.object({
-    templateName: z.string().min(1),
+    templateName: z.enum(VALID_TEMPLATES),
     templateData: z.record(z.unknown()),
   }).parse(request.body);
 
   const draft = await prisma.draft.findUnique({ where: { id: params.id } });
   if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
 
+  // Ensure uploads directory exists
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  mkdirSync(UPLOADS_DIR, { recursive: true });
+
   // Lazy-import visual-engine to avoid hard dep at startup
   const { generateInfographic } = await import('@scp/visual-engine');
 
-  const buf = await generateInfographic(
-    body.templateName as any,
-    body.templateData as any,
-  );
+  let buf: Buffer;
+  try {
+    buf = await generateInfographic(
+      body.templateName as any,
+      body.templateData as any,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    app.log.error({ err: msg, templateName: body.templateName }, 'visual render failed');
+    return reply.code(422).send({ error: 'render_failed', message: msg });
+  }
 
   // Save as Media entry
   const filename = `visual-${params.id}-${Date.now()}.png`;
   const storagePath = join(UPLOADS_DIR, filename);
-  const { writeFileSync } = await import('node:fs');
-  writeFileSync(storagePath, buf);
+  try {
+    writeFileSync(storagePath, buf);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    app.log.error({ err: msg, storagePath }, 'visual write failed');
+    return reply.code(500).send({ error: 'write_failed', message: 'Failed to save image' });
+  }
 
   const media = await prisma.media.create({
     data: {
