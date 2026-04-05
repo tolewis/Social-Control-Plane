@@ -33,6 +33,7 @@ export interface TemplateDataMap {
   'water-temps': WaterTempsData;
   'species-report': SpeciesReportData;
   'tide-chart': TideChartData;
+  'catch-of-the-week': CatchOfTheWeekData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
@@ -106,5 +107,31 @@ export interface TideChartData {
   brandName?: string;
   tagline?: string;
   sourceUrl?: string;
+  logoFile?: string;
+}
+
+// ─── Catch of the Week ──────────────────────────────────────────────────────
+
+/** Input data for the catch-of-the-week template. */
+export interface CatchOfTheWeekData {
+  /** Angler name, e.g. "Captain Mike" */
+  angler: string;
+  /** Species caught, e.g. "King Mackerel" */
+  species: string;
+  /** Weight, e.g. "42 lbs" */
+  weight?: string;
+  /** Length, e.g. "48 inches" */
+  length?: string;
+  /** Location, e.g. "Oregon Inlet, NC" */
+  location: string;
+  /** Date, e.g. "April 3, 2026" */
+  date: string;
+  /** Bait/technique, e.g. "Live pogy, slow trolled" */
+  bait?: string;
+  /** Fun quote or context */
+  quote?: string;
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
   logoFile?: string;
 }

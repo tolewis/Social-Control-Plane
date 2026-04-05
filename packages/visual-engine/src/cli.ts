@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData, SpeciesReportData, TideChartData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -53,6 +53,17 @@ const SAMPLE_DATA: Record<string, unknown> = {
       { label: 'Fri 4/11', tides: [{ type: 'high', time: '9:18 AM', heightFt: 3.1 }, { type: 'low', time: '3:32 PM', heightFt: 1.1 }, { type: 'high', time: '9:38 PM', heightFt: 3.3 }], bestWindow: '8:30–10:30 AM' },
     ],
   } satisfies TideChartData,
+
+  'catch-of-the-week': {
+    angler: 'Captain Mike',
+    species: 'King Mackerel',
+    weight: '42 lbs',
+    length: '48"',
+    location: 'Oregon Inlet, NC',
+    date: 'April 3, 2026',
+    bait: 'Live pogy, slow trolled',
+    quote: 'Biggest king I\'ve seen this early in the season',
+  } satisfies CatchOfTheWeekData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────

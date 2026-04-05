@@ -12,6 +12,7 @@ export type {
   TideChartData,
   TideDay,
   TideEvent,
+  CatchOfTheWeekData,
 } from './templates/types.js';
 
 import { buildTemplate } from './templates/index.js';
