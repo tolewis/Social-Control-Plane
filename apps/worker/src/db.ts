@@ -94,8 +94,20 @@ interface UpdateManyArgs {
 interface ModelDelegate<T> {
   findUnique(args: FindUniqueArgs<T>): Promise<T | null>;
   findMany(args: FindManyArgs): Promise<T[]>;
+  create(args: { data: Record<string, unknown> }): Promise<T>;
   updateMany(args: UpdateManyArgs): Promise<{ count: number }>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<T>;
+}
+
+export interface VisualSpecRow {
+  id: string;
+  draftId: string;
+  templateName: string;
+  templateData: unknown;
+  generatedMediaId: string | null;
+  validated: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface DbClient {
@@ -103,6 +115,7 @@ export interface DbClient {
   draft: ModelDelegate<DraftRow>;
   publishJob: ModelDelegate<PublishJobRow>;
   media: ModelDelegate<MediaRow>;
+  visualSpec: ModelDelegate<VisualSpecRow>;
   $disconnect(): Promise<void>;
 }
 
