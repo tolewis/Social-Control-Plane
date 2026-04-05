@@ -1,0 +1,12 @@
+# Generated output
+*.png
+!assets/*.png
+
+# Font files (large, download via setup script)
+assets/*.ttf
+assets/*.otf
+assets/*.woff
+assets/*.woff2
+assets/*.zip
+
+dist/

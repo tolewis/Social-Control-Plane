@@ -1,0 +1,26 @@
+{
+  "name": "@scp/visual-engine",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "bin": {
+    "scp-render": "./src/cli.ts"
+  },
+  "scripts": {
+    "render": "tsx src/cli.ts render",
+    "render:sample": "tsx src/cli.ts render water-temps --sample --out water-temps-sample.png"
+  },
+  "dependencies": {
+    "@types/react": "^19.2.14",
+    "react": "19.2.4",
+    "satori": "^0.12.1",
+    "sharp": "^0.33.5",
+    "yoga-wasm-web": "^0.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0"
+  }
+}
