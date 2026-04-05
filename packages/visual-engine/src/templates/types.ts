@@ -34,6 +34,7 @@ export interface TemplateDataMap {
   'species-report': SpeciesReportData;
   'tide-chart': TideChartData;
   'catch-of-the-week': CatchOfTheWeekData;
+  'product-spotlight': ProductSpotlightData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
@@ -130,6 +131,34 @@ export interface CatchOfTheWeekData {
   bait?: string;
   /** Fun quote or context */
   quote?: string;
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
+  logoFile?: string;
+}
+
+// ─── Product Spotlight ──────────────────────────────────────────────────────
+
+/** A single product spec/feature bullet. */
+export interface ProductSpec {
+  label: string;
+  value: string;
+}
+
+/** Input data for the product-spotlight template. */
+export interface ProductSpotlightData {
+  /** Product name, e.g. "Shimano Saragosa SW" */
+  name: string;
+  /** Category tag, e.g. "REEL" or "ROD" or "BAIT" */
+  category: string;
+  /** Price, e.g. "$349.99" */
+  price?: string;
+  /** Key specs */
+  specs: ProductSpec[];
+  /** Why we carry it / sales pitch, 1-2 sentences */
+  pitch?: string;
+  /** In stock status */
+  inStock?: boolean;
   /** Optional brand overrides */
   brandName?: string;
   tagline?: string;

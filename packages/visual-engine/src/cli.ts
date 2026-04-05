@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData, ProductSpotlightData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -64,6 +64,21 @@ const SAMPLE_DATA: Record<string, unknown> = {
     bait: 'Live pogy, slow trolled',
     quote: 'Biggest king I\'ve seen this early in the season',
   } satisfies CatchOfTheWeekData,
+
+  'product-spotlight': {
+    name: 'Shimano Saragosa SW 5000',
+    category: 'Reel',
+    price: '$349.99',
+    inStock: true,
+    specs: [
+      { label: 'Gear Ratio', value: '5.7:1' },
+      { label: 'Weight', value: '12.9 oz' },
+      { label: 'Line Cap', value: '20lb / 210yd' },
+      { label: 'Drag Max', value: '22 lbs' },
+      { label: 'Bearings', value: '5+1' },
+    ],
+    pitch: 'Built for the salt. The Saragosa handles everything from king rigs to bottom fishing — bombproof drag, sealed body, and it still weighs under a pound.',
+  } satisfies ProductSpotlightData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────
