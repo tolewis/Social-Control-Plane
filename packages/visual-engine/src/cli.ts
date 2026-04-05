@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateInfographic } from './index.js';
 import type { TemplateName } from './templates/types.js';
-import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData, ProductSpotlightData, TournamentResultsData } from './templates/types.js';
+import type { WaterTempsData, SpeciesReportData, TideChartData, CatchOfTheWeekData, ProductSpotlightData, TournamentResultsData, ArticleAdData } from './templates/types.js';
 
 // ─── Sample data for quick testing ──────────────────────────────────────────
 
@@ -94,6 +94,21 @@ const SAMPLE_DATA: Record<string, unknown> = {
       { rank: 6, name: 'Lucky Strike', species: 'King Mackerel', weight: '25.3 lbs' },
     ],
   } satisfies TournamentResultsData,
+
+  'article-ad': {
+    title: 'The Complete Guide to King Mackerel Rigs',
+    category: 'Rigging Guide',
+    readTime: '8 min read',
+    hook: 'Stop losing kings at the boat. We break down the 3 rigs that actually work — from slow-troll stinger rigs to live-bait setups for structure fishing.',
+    takeaways: [
+      { text: 'Stinger rig setup for slow trolling live pogies' },
+      { text: 'Wire vs. fluorocarbon leader — when to use each' },
+      { text: 'Hook placement that prevents throw-offs' },
+      { text: 'Drag settings for 30lb+ fish on light tackle' },
+    ],
+    cta: 'Read the full guide →',
+    url: 'tackleroomsupply.com/guides/king-rigs',
+  } satisfies ArticleAdData,
 };
 
 // ─── Arg parsing ────────────────────────────────────────────────────────────

@@ -17,6 +17,8 @@ export type {
   ProductSpec,
   TournamentResultsData,
   TournamentEntry,
+  ArticleAdData,
+  ArticleTakeaway,
 } from './templates/types.js';
 
 import { buildTemplate } from './templates/index.js';

@@ -36,6 +36,7 @@ export interface TemplateDataMap {
   'catch-of-the-week': CatchOfTheWeekData;
   'product-spotlight': ProductSpotlightData;
   'tournament-results': TournamentResultsData;
+  'article-ad': ArticleAdData;
 }
 
 export type TemplateName = keyof TemplateDataMap;
@@ -194,6 +195,35 @@ export interface TournamentResultsData {
   leaderboard: TournamentEntry[];
   /** Total boats/anglers, e.g. "42 boats" */
   totalParticipants?: string;
+  /** Optional brand overrides */
+  brandName?: string;
+  tagline?: string;
+  logoFile?: string;
+}
+
+// ─── Article Ad ─────────────────────────────────────────────────────────────
+
+/** A key takeaway or bullet point from the article. */
+export interface ArticleTakeaway {
+  text: string;
+}
+
+/** Input data for the article-ad template. */
+export interface ArticleAdData {
+  /** Article title / headline */
+  title: string;
+  /** Category/topic tag, e.g. "RIGGING GUIDE" or "GEAR REVIEW" */
+  category: string;
+  /** 1-2 sentence hook/summary */
+  hook: string;
+  /** Key takeaways (3-4 bullet points) */
+  takeaways?: ArticleTakeaway[];
+  /** CTA text, e.g. "Read the full guide →" */
+  cta?: string;
+  /** URL to display (not a link — just visual), e.g. "tackleroomsupply.com/guides/king-rigs" */
+  url?: string;
+  /** Reading time estimate, e.g. "5 min read" */
+  readTime?: string;
   /** Optional brand overrides */
   brandName?: string;
   tagline?: string;
