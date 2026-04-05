@@ -915,22 +915,9 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
     // Upload each media file via v1.1 media upload endpoint
     const mediaIds: string[] = [];
     for (const m of media) {
-      const blob = mediaBlob(m);
-      const form = new FormData();
-      form.append('media', blob, m.originalName);
-      // media_category helps X process the file correctly
-      form.append('media_category', isVideo(m) ? 'tweet_video' : 'tweet_image');
-
-      const upRes = await jsonFetch(
-        'https://upload.twitter.com/1.1/media/upload.json',
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${input.accessToken}`,
-          },
-          body: form,
-        },
-      );
+      const upRes = isImage(m)
+        ? await this.uploadImageMedia(m, input.accessToken)
+        : await this.uploadLegacyMedia(m, input.accessToken);
       if (!upRes.ok) return upRes;
 
       const upBody = asRecord(upRes.body);
@@ -962,6 +949,133 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
       },
       body: JSON.stringify(tweetBody),
     });
+  }
+
+  /**
+   * Upload image via X API v2 chunked upload (INIT → APPEND → FINALIZE).
+   * The v2 /2/media/upload endpoint requires this flow — simple multipart POSTs return 403.
+   * OAuth 2.0 Bearer tokens work for this endpoint with tweet.write scope.
+   */
+  private async uploadImageMedia(m: MediaAttachment, accessToken: string): Promise<PublishResult> {
+    const fileData = readFileSync(m.storagePath);
+    const totalBytes = fileData.length;
+    const authHeader = { authorization: `Bearer ${accessToken}` };
+
+    // Step 1: INIT
+    const initForm = new FormData();
+    initForm.append('command', 'INIT');
+    initForm.append('total_bytes', String(totalBytes));
+    initForm.append('media_type', m.mimeType);
+    initForm.append('media_category', 'tweet_image');
+
+    const initRes = await jsonFetch('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      headers: authHeader,
+      body: initForm,
+    });
+    if (!initRes.ok) return initRes;
+
+    const mediaId = String(asRecord(initRes.body).media_id_string ?? asRecord(initRes.body).media_id ?? '');
+    if (!mediaId) return { ok: false, status: 500, body: { error: 'x_media_init_no_id', raw: initRes.body } };
+
+    // Step 2: APPEND (single segment for images under 5MB)
+    const appendForm = new FormData();
+    appendForm.append('command', 'APPEND');
+    appendForm.append('media_id', mediaId);
+    appendForm.append('segment_index', '0');
+    appendForm.append('media', new Blob([fileData], { type: m.mimeType }), m.originalName);
+
+    const appendRes = await fetch('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      headers: authHeader,
+      body: appendForm,
+    });
+    // APPEND returns 204 No Content on success (no JSON body)
+    if (!appendRes.ok) {
+      const body = await appendRes.text().catch(() => 'no body');
+      return { ok: false, status: appendRes.status, body: { error: 'x_media_append_failed', raw: body } };
+    }
+
+    // Step 3: FINALIZE
+    const finalizeForm = new FormData();
+    finalizeForm.append('command', 'FINALIZE');
+    finalizeForm.append('media_id', mediaId);
+
+    const finalizeRes = await jsonFetch('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      headers: authHeader,
+      body: finalizeForm,
+    });
+    if (!finalizeRes.ok) return finalizeRes;
+
+    // Return the finalize response which includes media_id_string
+    return { ok: true, status: 200, body: { media_id_string: mediaId, ...asRecord(finalizeRes.body) } };
+  }
+
+  /**
+   * Upload video via X API v2 chunked upload.
+   * Same INIT/APPEND/FINALIZE flow but with media_category=tweet_video
+   * and multi-segment APPEND for files over 5MB.
+   */
+  private async uploadLegacyMedia(m: MediaAttachment, accessToken: string): Promise<PublishResult> {
+    const fileData = readFileSync(m.storagePath);
+    const totalBytes = fileData.length;
+    const authHeader = { authorization: `Bearer ${accessToken}` };
+    const category = isVideo(m) ? 'tweet_video' : 'tweet_image';
+
+    // INIT
+    const initForm = new FormData();
+    initForm.append('command', 'INIT');
+    initForm.append('total_bytes', String(totalBytes));
+    initForm.append('media_type', m.mimeType);
+    initForm.append('media_category', category);
+
+    const initRes = await jsonFetch('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      headers: authHeader,
+      body: initForm,
+    });
+    if (!initRes.ok) return initRes;
+
+    const mediaId = String(asRecord(initRes.body).media_id_string ?? asRecord(initRes.body).media_id ?? '');
+    if (!mediaId) return { ok: false, status: 500, body: { error: 'x_media_init_no_id', raw: initRes.body } };
+
+    // APPEND — chunk into 5MB segments
+    const CHUNK_SIZE = 5 * 1024 * 1024;
+    let segmentIndex = 0;
+    for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
+      const chunk = fileData.subarray(offset, Math.min(offset + CHUNK_SIZE, totalBytes));
+      const appendForm = new FormData();
+      appendForm.append('command', 'APPEND');
+      appendForm.append('media_id', mediaId);
+      appendForm.append('segment_index', String(segmentIndex));
+      appendForm.append('media', new Blob([chunk], { type: m.mimeType }), m.originalName);
+
+      const appendRes = await fetch('https://api.x.com/2/media/upload', {
+        method: 'POST',
+        headers: authHeader,
+        body: appendForm,
+      });
+      if (!appendRes.ok) {
+        const body = await appendRes.text().catch(() => 'no body');
+        return { ok: false, status: appendRes.status, body: { error: 'x_media_append_failed', segment: segmentIndex, raw: body } };
+      }
+      segmentIndex++;
+    }
+
+    // FINALIZE
+    const finalizeForm = new FormData();
+    finalizeForm.append('command', 'FINALIZE');
+    finalizeForm.append('media_id', mediaId);
+
+    const finalizeRes = await jsonFetch('https://api.x.com/2/media/upload', {
+      method: 'POST',
+      headers: authHeader,
+      body: finalizeForm,
+    });
+    if (!finalizeRes.ok) return finalizeRes;
+
+    return { ok: true, status: 200, body: { media_id_string: mediaId, ...asRecord(finalizeRes.body) } };
   }
 
   /** Poll X media processing until complete (for video uploads). */
