@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { randomUUID, createHmac, timingSafeEqual, createHash, randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync, unlinkSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
@@ -1299,7 +1300,7 @@ app.post('/drafts/:id/generate-visual', async (request, reply) => {
     data: {
       draftId: params.id,
       templateName: body.templateName,
-      templateData: body.templateData,
+      templateData: body.templateData as Prisma.InputJsonValue,
       generatedMediaId: media.id,
     },
   });
