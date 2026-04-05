@@ -1,3 +1,4 @@
+import React from 'react';
 import type { TideChartData, TideDay, TideEvent } from './types.js';
 import { BRAND, BrandFooter } from './brand.js';
 

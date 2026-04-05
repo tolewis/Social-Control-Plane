@@ -1,3 +1,4 @@
+import React from 'react';
 import type { TournamentResultsData, TournamentEntry } from './types.js';
 import { BRAND, BrandFooter } from './brand.js';
 

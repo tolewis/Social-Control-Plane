@@ -1,3 +1,4 @@
+import React from 'react';
 import { loadAssetDataUri } from '../assets.js';
 
 // ─── Shared brand constants ─────────────────────────────────────────────────
