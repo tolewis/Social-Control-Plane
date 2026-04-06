@@ -15,6 +15,11 @@ function base(): string {
   return `${document.location.origin}/backend`;
 }
 
+/** Resolve an API-relative path (like /uploads/...) to a full URL the browser can fetch. */
+export function apiUrl(path: string): string {
+  return `${base()}${path}`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Auth token helpers                                                 */
 /* ------------------------------------------------------------------ */

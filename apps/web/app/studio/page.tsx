@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
+  apiUrl,
   fetchStudioRegistry,
   fetchStudioBatches,
   studioPreview,
@@ -441,7 +442,7 @@ export default function StudioPage() {
           <div>
             <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--panel)' }}>
               <img
-                src={preview.previewUrl}
+                src={apiUrl(preview.previewUrl)}
                 alt="Studio preview"
                 style={{ width: '100%', height: 'auto', display: 'block' }}
               />
@@ -495,7 +496,7 @@ export default function StudioPage() {
                     transition: 'border-color 0.15s',
                   }}>
                   {v.previewUrl ? (
-                    <img src={v.previewUrl} alt={`Variant ${v.index}`}
+                    <img src={apiUrl(v.previewUrl)} alt={`Variant ${v.index}`}
                       style={{ width: '100%', height: 'auto', display: 'block' }} />
                   ) : (
                     <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--err)', fontSize: 12 }}>
