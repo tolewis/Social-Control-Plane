@@ -266,11 +266,13 @@ function DayView({
                     <div className="dayNowDot" />
                   </div>
                 )}
-                {hourItems.map((item) => (
+                {hourItems
+                  .sort((a, b) => a.date.getMinutes() - b.date.getMinutes())
+                  .map((item) => (
                   <div
                     key={item.id}
                     className="dayEvent"
-                    style={{ borderLeftColor: statusColor(item.status), top: `${(item.date.getMinutes() / 60) * 100}%` }}
+                    style={{ borderLeftColor: statusColor(item.status), position: 'relative', top: 'auto' }}
                   >
                     <div className="dayEventHeader">
                       <ProviderIcon provider={item.provider} size={16} />
@@ -345,30 +347,46 @@ function TimelineView({
           </div>
         )}
 
-        {/* Events positioned absolutely by time */}
-        {dayItems.filter((item) => item.date.getHours() >= WORK_START && item.date.getHours() < WORK_END).map((item) => {
-          const minutes = item.date.getHours() * 60 + item.date.getMinutes() - WORK_START * 60;
-          const topPct = (minutes / totalMinutes) * 100;
-          return (
-            <div
-              key={item.id}
-              className="timelineEvent"
-              style={{ top: `${topPct}%`, borderLeftColor: statusColor(item.status) }}
-            >
-              <div className="timelineEventHeader">
-                <ProviderIcon provider={item.provider} size={16} />
-                <span className="timelineEventName">{item.displayName}</span>
-                <span className="timelineEventTime">
-                  {item.date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
+        {/* Events positioned absolutely by time — stacked when overlapping */}
+        {(() => {
+          const filtered = dayItems
+            .filter((item) => item.date.getHours() >= WORK_START && item.date.getHours() < WORK_END)
+            .sort((a, b) => a.date.getTime() - b.date.getTime());
+          // Track occupied slots to offset overlapping events
+          const placed: Array<{ topPct: number; count: number }> = [];
+          return filtered.map((item) => {
+            const minutes = item.date.getHours() * 60 + item.date.getMinutes() - WORK_START * 60;
+            const topPct = (minutes / totalMinutes) * 100;
+            // Check if this overlaps with a previously placed event (within 4% = ~38 min)
+            let slot = placed.find(p => Math.abs(p.topPct - topPct) < 4);
+            if (slot) {
+              slot.count++;
+            } else {
+              slot = { topPct, count: 0 };
+              placed.push(slot);
+            }
+            const offsetPx = slot.count * 68; // stack each overlap 68px lower
+            return (
+              <div
+                key={item.id}
+                className="timelineEvent"
+                style={{ top: `calc(${topPct}% + ${offsetPx}px)`, borderLeftColor: statusColor(item.status) }}
+              >
+                <div className="timelineEventHeader">
+                  <ProviderIcon provider={item.provider} size={16} />
+                  <span className="timelineEventName">{item.displayName}</span>
+                  <span className="timelineEventTime">
+                    {item.date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
+                </div>
+                <div className="timelineEventContent">
+                  {item.content.slice(0, 120)}{item.content.length > 120 ? '…' : ''}
+                </div>
               </div>
-              <div className="timelineEventContent">
-                {item.content.slice(0, 120)}{item.content.length > 120 ? '…' : ''}
-              </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
 
         {/* Empty state */}
         {dayItems.length === 0 && (
