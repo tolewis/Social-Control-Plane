@@ -1391,18 +1391,37 @@ app.post('/publish/:draftId', async (request, reply) => {
     return existingIdem.responseJson;
   }
 
-  // --- Rate limit: one active job per connection ---
-  const activeJob = await prisma.publishJob.findFirst({
+  // --- Rate limit: block only if a job is actively PROCESSING ---
+  // PENDING jobs are delayed BullMQ jobs waiting for their scheduledFor time.
+  // Multiple scheduled posts per connection is normal for agents doing bulk work.
+  // We only block if something is actively publishing right now.
+  const processingJob = await prisma.publishJob.findFirst({
     where: {
       connectionId: draft.connectionId,
-      status: { in: ['PENDING', 'PROCESSING'] },
+      status: 'PROCESSING',
     },
   });
-  if (activeJob) {
+  if (processingJob) {
     return reply.code(429).send({
       error: 'rate_limited',
-      message: 'An active publish job already exists for this connection. Wait for it to complete.',
-      activeJobId: activeJob.id,
+      message: 'A job is actively publishing on this connection. Wait for it to complete.',
+      activeJobId: processingJob.id,
+      retryAfterMs: 5000,
+    });
+  }
+
+  // Queue depth guard: prevent runaway agents from flooding a connection
+  const pendingCount = await prisma.publishJob.count({
+    where: {
+      connectionId: draft.connectionId,
+      status: 'PENDING',
+    },
+  });
+  if (pendingCount >= 200) {
+    return reply.code(429).send({
+      error: 'queue_depth_exceeded',
+      message: `${pendingCount} pending jobs on this connection. Max 200. Wait for some to complete.`,
+      pendingCount,
     });
   }
 
@@ -1490,6 +1509,142 @@ app.post('/publish/:draftId', async (request, reply) => {
   await audit('job', job.id, 'enqueued', { draftId: draft.id, connectionId: draft.connectionId });
 
   return responsePayload;
+});
+
+// ---------------------------------------------------------------------------
+// Bulk publish — queue multiple drafts in one call (agent-friendly)
+// ---------------------------------------------------------------------------
+app.post('/publish/bulk', async (request, reply) => {
+  const body = z.object({
+    draftIds: z.array(z.string()).min(1).max(200),
+  }).parse(request.body);
+
+  const results: Array<{ draftId: string; status: 'queued' | 'skipped' | 'error'; jobId?: string; reason?: string }> = [];
+
+  for (const draftId of body.draftIds) {
+    const draft = await prisma.draft.findUnique({ where: { id: draftId } });
+    if (!draft) {
+      results.push({ draftId, status: 'skipped', reason: 'not_found' });
+      continue;
+    }
+    if (draft.status !== 'draft' && draft.status !== 'failed') {
+      results.push({ draftId, status: 'skipped', reason: `status_${draft.status}` });
+      continue;
+    }
+
+    // Queue depth check
+    const pendingCount = await prisma.publishJob.count({
+      where: { connectionId: draft.connectionId, status: 'PENDING' },
+    });
+    if (pendingCount >= 200) {
+      results.push({ draftId, status: 'error', reason: 'queue_depth_exceeded' });
+      continue;
+    }
+
+    try {
+      const idemKey = `bulk-${draftId}-${Date.now()}`;
+      const job = await prisma.publishJob.create({
+        data: {
+          draftId: draft.id,
+          connectionId: draft.connectionId,
+          status: 'PENDING',
+          idempotencyKey: idemKey,
+        },
+      });
+
+      await prisma.draft.update({
+        where: { id: draft.id },
+        data: { status: 'queued' },
+      });
+
+      const connection = await prisma.socialConnection.findUnique({
+        where: { id: draft.connectionId },
+      });
+
+      const scheduledDelay = draft.scheduledFor
+        ? Math.max(0, new Date(draft.scheduledFor).getTime() - Date.now())
+        : 0;
+
+      await publishQueue.add(
+        'draft.publish',
+        {
+          accountId: draft.connectionId,
+          draftId: draft.id,
+          connectionId: draft.connectionId,
+          provider: connection?.provider ?? 'linkedin',
+          publishMode: draft.publishMode,
+          idempotencyKey: idemKey,
+        },
+        {
+          jobId: job.id,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          delay: scheduledDelay,
+        },
+      );
+
+      results.push({ draftId, status: 'queued', jobId: job.id });
+    } catch (err) {
+      results.push({ draftId, status: 'error', reason: err instanceof Error ? err.message : 'unknown' });
+    }
+  }
+
+  const queued = results.filter(r => r.status === 'queued').length;
+  const skipped = results.filter(r => r.status === 'skipped').length;
+  const errored = results.filter(r => r.status === 'error').length;
+
+  await audit('bulk_publish', 'batch', 'enqueued', { total: body.draftIds.length, queued, skipped, errored });
+
+  return {
+    total: body.draftIds.length,
+    queued,
+    skipped,
+    errored,
+    results,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Bulk draft creation (agent-friendly)
+// ---------------------------------------------------------------------------
+app.post('/drafts/bulk', async (request, reply) => {
+  const body = z.object({
+    drafts: z.array(z.object({
+      connectionId: z.string(),
+      publishMode: z.string().optional(),
+      content: z.string(),
+      title: z.string().optional(),
+      mediaIds: z.array(z.string()).optional(),
+      scheduledFor: z.string().datetime().optional(),
+    })).min(1).max(500),
+  }).parse(request.body);
+
+  const created: Array<{ id: string; connectionId: string; scheduledFor?: string }> = [];
+
+  for (const d of body.drafts) {
+    const draft = await prisma.draft.create({
+      data: {
+        connectionId: d.connectionId,
+        publishMode: d.publishMode ?? 'draft-agent',
+        content: d.content,
+        title: d.title ?? null,
+        mediaJson: (d.mediaIds ?? null) as any,
+        scheduledFor: d.scheduledFor ? new Date(d.scheduledFor) : null,
+      },
+    });
+    created.push({
+      id: draft.id,
+      connectionId: draft.connectionId,
+      scheduledFor: d.scheduledFor,
+    });
+  }
+
+  await audit('bulk_draft', 'batch', 'created', { count: created.length });
+
+  return reply.code(201).send({
+    created: created.length,
+    drafts: created,
+  });
 });
 
 // ---------------------------------------------------------------------------
