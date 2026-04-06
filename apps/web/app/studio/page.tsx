@@ -104,6 +104,8 @@ export default function StudioPage() {
   const [approving, setApproving] = useState(false);
   const [approveResult, setApproveResult] = useState('');
   const [inspectedVariant, setInspectedVariant] = useState<number | null>(null);
+  const [lightboxVariant, setLightboxVariant] = useState<number | null>(null);
+  const [previewLightbox, setPreviewLightbox] = useState(false);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -465,7 +467,8 @@ export default function StudioPage() {
         {/* Single preview */}
         {preview && !batch && (
           <div>
-            <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--panel)' }}>
+            <div onClick={() => setPreviewLightbox(true)}
+              style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--panel)', cursor: 'zoom-in' }}>
               <img
                 src={apiUrl(preview.previewUrl)}
                 alt="Studio preview"
@@ -507,7 +510,6 @@ export default function StudioPage() {
               {(batch.results || []).map((v: StudioBatchVariant) => (
                 <div key={v.index}
                   onClick={() => toggleVariant(v.index)}
-                  onDoubleClick={() => setInspectedVariant(v.index === inspectedVariant ? null : v.index)}
                   style={{
                     borderRadius: 10,
                     overflow: 'hidden',
@@ -521,8 +523,24 @@ export default function StudioPage() {
                     transition: 'border-color 0.15s',
                   }}>
                   {v.previewUrl ? (
-                    <img src={apiUrl(v.previewUrl)} alt={`Variant ${v.index}`}
-                      style={{ width: '100%', height: 'auto', display: 'block' }} />
+                    <div style={{ position: 'relative' }}>
+                      <img src={apiUrl(v.previewUrl)} alt={`Variant ${v.index}`}
+                        style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      <button
+                        onClick={e => { e.stopPropagation(); setLightboxVariant(v.index); }}
+                        style={{
+                          position: 'absolute', top: 6, right: 6,
+                          width: 30, height: 30, borderRadius: 6,
+                          background: 'rgba(0,0,0,0.55)', border: 'none',
+                          color: '#fff', fontSize: 16, cursor: 'zoom-in',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          opacity: 0.7, transition: 'opacity 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+                        title="Zoom in"
+                      >&#x1F50D;</button>
+                    </div>
                   ) : (
                     <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--err)', fontSize: 12 }}>
                       Render failed
@@ -645,6 +663,47 @@ export default function StudioPage() {
           <InspectedVariantInfo variant={batch.results.find(r => r.index === inspectedVariant)} />
         )}
       </div>
+
+      {/* ---- LIGHTBOX: Full-size preview modal ---- */}
+      {lightboxVariant !== null && batch && (
+        <VariantLightbox
+          batch={batch}
+          variantIndex={lightboxVariant}
+          selectedVariants={selectedVariants}
+          onClose={() => setLightboxVariant(null)}
+          onNavigate={setLightboxVariant}
+          onToggleSelect={toggleVariant}
+        />
+      )}
+
+      {/* ---- LIGHTBOX: Single preview zoom ---- */}
+      {previewLightbox && preview && (
+        <div
+          onClick={() => setPreviewLightbox(false)}
+          onKeyDown={e => { if (e.key === 'Escape') setPreviewLightbox(false); }}
+          tabIndex={0}
+          ref={el => el?.focus()}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out',
+          }}>
+          <img
+            src={apiUrl(preview.previewUrl)}
+            alt="Studio preview"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, cursor: 'default' }}
+          />
+          <button onClick={() => setPreviewLightbox(false)}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8,
+              color: '#fff', fontSize: 22, width: 40, height: 40, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>&times;</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -763,6 +822,115 @@ function InspectedVariantInfo({ variant }: { variant?: StudioBatchVariant }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Variant Lightbox                                                    */
+/* ------------------------------------------------------------------ */
+
+function VariantLightbox({
+  batch,
+  variantIndex,
+  selectedVariants,
+  onClose,
+  onNavigate,
+  onToggleSelect,
+}: {
+  batch: StudioBatchResult;
+  variantIndex: number;
+  selectedVariants: Set<number>;
+  onClose: () => void;
+  onNavigate: (idx: number) => void;
+  onToggleSelect: (idx: number) => void;
+}) {
+  const v = batch.results.find(r => r.index === variantIndex);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && variantIndex > 0) onNavigate(variantIndex - 1);
+      if (e.key === 'ArrowRight' && variantIndex < batch.results.length - 1) onNavigate(variantIndex + 1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [variantIndex, batch.results.length, onClose, onNavigate]);
+
+  if (!v || !v.previewUrl) return null;
+
+  const stop = stopLabel(v.stopRecommendation);
+  const canPrev = variantIndex > 0;
+  const canNext = variantIndex < batch.results.length - 1;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'zoom-out',
+      }}>
+      {/* Nav: prev */}
+      {canPrev && (
+        <button onClick={e => { e.stopPropagation(); onNavigate(variantIndex - 1); }}
+          style={{
+            position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
+            color: '#fff', fontSize: 28, width: 48, height: 48, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>&#8249;</button>
+      )}
+      {/* Nav: next */}
+      {canNext && (
+        <button onClick={e => { e.stopPropagation(); onNavigate(variantIndex + 1); }}
+          style={{
+            position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
+            color: '#fff', fontSize: 28, width: 48, height: 48, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>&#8250;</button>
+      )}
+
+      {/* Image + info bar */}
+      <div onClick={e => e.stopPropagation()}
+        style={{ cursor: 'default', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <img
+          src={apiUrl(v.previewUrl)}
+          alt={`Variant ${v.index}`}
+          style={{ maxWidth: '90vw', maxHeight: 'calc(90vh - 60px)', objectFit: 'contain', borderRadius: 8 }}
+        />
+        <div style={{
+          marginTop: 10, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
+          color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.6)',
+          padding: '8px 16px', borderRadius: 8,
+        }}>
+          <span style={{ fontWeight: 700 }}>#{v.index}</span>
+          <span style={{ color: scoreColor(v.critiqueScore), fontWeight: 600 }}>{v.critiqueScore}/100</span>
+          <span style={{ color: stop.color }}>{stop.text}</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>{v.width}x{v.height}</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>{Math.round(v.sizeBytes / 1024)} KB</span>
+          {v.approved && <span style={{ color: 'var(--ok)', fontWeight: 600 }}>Approved</span>}
+          <button onClick={() => onToggleSelect(v.index)}
+            style={{
+              background: selectedVariants.has(v.index) ? 'var(--ok)' : 'rgba(255,255,255,0.15)',
+              border: 'none', borderRadius: 6, color: '#fff', fontSize: 12,
+              padding: '4px 12px', cursor: 'pointer', fontWeight: 600,
+            }}>
+            {selectedVariants.has(v.index) ? 'Selected' : 'Select'}
+          </button>
+        </div>
+      </div>
+
+      {/* Close */}
+      <button onClick={onClose}
+        style={{
+          position: 'absolute', top: 16, right: 16,
+          background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
+          color: '#fff', fontSize: 22, width: 40, height: 40, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>&times;</button>
     </div>
   );
 }

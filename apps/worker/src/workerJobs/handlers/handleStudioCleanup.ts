@@ -16,7 +16,8 @@ export async function handleStudioCleanup(
   const { rmSync } = await import('node:fs');
   const { join, resolve } = await import('node:path');
 
-  const uploadsDir = resolve(join(import.meta.dirname ?? '.', '../../../../uploads'));
+  // Must match the API's UPLOADS_DIR — monorepo root /uploads (NOT /apps/uploads)
+  const uploadsDir = resolve(join(import.meta.dirname ?? '.', '../../../../../uploads'));
 
   if (job.data.batchId) {
     // Clean specific batch

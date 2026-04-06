@@ -28,7 +28,8 @@ export async function handleStudioRenderBatch(
   const { join, resolve } = await import('node:path');
   const sharp = (await import('sharp')).default;
 
-  const uploadsDir = resolve(join(import.meta.dirname ?? '.', '../../../../uploads'));
+  // Must match the API's UPLOADS_DIR — monorepo root /uploads (NOT /apps/uploads)
+  const uploadsDir = resolve(join(import.meta.dirname ?? '.', '../../../../../uploads'));
   const batchDir = join(uploadsDir, 'studio', batchId);
   mkdirSync(batchDir, { recursive: true });
 
