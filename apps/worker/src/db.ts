@@ -124,6 +124,16 @@ export interface StudioBatchRow {
   expiresAt: Date;
 }
 
+export interface ProviderConfigRow {
+  id: string;
+  provider: string;
+  encryptedClientId: string;
+  encryptedClientSecret: string;
+  redirectUri: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DbClient {
   socialConnection: ModelDelegate<SocialConnectionRow>;
   draft: ModelDelegate<DraftRow>;
@@ -131,6 +141,9 @@ export interface DbClient {
   media: ModelDelegate<MediaRow>;
   visualSpec: ModelDelegate<VisualSpecRow>;
   studioBatch: ModelDelegate<StudioBatchRow>;
+  providerConfig: ModelDelegate<ProviderConfigRow> & {
+    findUnique(args: { where: { provider: string } }): Promise<ProviderConfigRow | null>;
+  };
   $disconnect(): Promise<void>;
 }
 

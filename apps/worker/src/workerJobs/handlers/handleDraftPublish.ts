@@ -96,26 +96,40 @@ interface ProviderAuthAdapter {
 
 type FullAdapter = ProviderPublishAdapter & ProviderAuthAdapter;
 
-async function loadProviderAdapter(provider: string): Promise<FullAdapter | null> {
+async function loadProviderAdapter(provider: string, db?: DbClient): Promise<FullAdapter | null> {
   // Construct the module specifier at runtime so tsc doesn't try to resolve
   // the workspace link before dependencies are installed.
   const modPath = '@scp/' + 'providers';
   const mod = await import(/* webpackIgnore: true */ modPath) as {
-    LinkedInAdapter: new () => FullAdapter;
-    FacebookAdapter: new () => FullAdapter;
-    InstagramAdapter: new () => FullAdapter;
-    XAdapter: new () => FullAdapter;
+    LinkedInAdapter: new (creds?: { clientId: string; clientSecret: string }) => FullAdapter;
+    FacebookAdapter: new (creds?: { clientId: string; clientSecret: string }) => FullAdapter;
+    InstagramAdapter: new (creds?: { clientId: string; clientSecret: string }) => FullAdapter;
+    XAdapter: new (creds?: { clientId: string; clientSecret: string }) => FullAdapter;
   };
+
+  // Load credentials from database (ProviderConfig) so adapters don't rely on env vars
+  let creds: { clientId: string; clientSecret: string } | undefined;
+  if (db) {
+    try {
+      const config = await db.providerConfig.findUnique({ where: { provider } });
+      if (config) {
+        creds = {
+          clientId: decrypt(config.encryptedClientId),
+          clientSecret: decrypt(config.encryptedClientSecret),
+        };
+      }
+    } catch { /* fall through to env-based resolution */ }
+  }
 
   switch (provider) {
     case 'linkedin':
-      return new mod.LinkedInAdapter();
+      return new mod.LinkedInAdapter(creds);
     case 'facebook':
-      return new mod.FacebookAdapter();
+      return new mod.FacebookAdapter(creds);
     case 'instagram':
-      return new mod.InstagramAdapter();
+      return new mod.InstagramAdapter(creds);
     case 'x':
-      return new mod.XAdapter();
+      return new mod.XAdapter(creds);
     default:
       return null;
   }
@@ -138,8 +152,8 @@ async function executeRequest(req: HttpRequest): Promise<{ ok: boolean; status: 
 }
 
 /** Resolve a publish adapter for the given provider string. */
-async function getPublishAdapter(provider: string): Promise<(ProviderPublishAdapter & ProviderAuthAdapter) | null> {
-  return loadProviderAdapter(provider);
+async function getPublishAdapter(provider: string, db?: DbClient): Promise<(ProviderPublishAdapter & ProviderAuthAdapter) | null> {
+  return loadProviderAdapter(provider, db);
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +310,7 @@ export async function handleDraftPublish(
   await job.updateProgress({ step: 'loaded_records' });
 
   // 3. Resolve publish adapter
-  const adapter = await getPublishAdapter(provider);
+  const adapter = await getPublishAdapter(provider, db);
   if (!adapter) {
     log.error('draft.publish.unsupported_provider', { jobId: job.id, provider });
     await markFailed(db, draftId, connectionId, `unsupported_provider: ${provider}`);
