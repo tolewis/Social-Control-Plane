@@ -1,0 +1,19 @@
+{
+  "name": "@scp/renderer",
+  "version": "0.1.0",
+  "description": "StrikeFrame rendering engine for SCP — Sharp-based ad/content creative generation",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^5.5.0"
+  }
+}
