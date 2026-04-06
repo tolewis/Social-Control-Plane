@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { IconPlus } from './icons';
+import { ComposePanel } from './ComposePanel';
 
 function useKeyboardVisible() {
   const [visible, setVisible] = useState(false);
@@ -21,12 +20,22 @@ function useKeyboardVisible() {
 }
 
 export function MobileFab() {
-  const pathname = usePathname() ?? '/';
   const keyboardOpen = useKeyboardVisible();
-  if (pathname === '/compose' || keyboardOpen) return null;
+  const [composeOpen, setComposeOpen] = useState(false);
+
+  if (keyboardOpen) return null;
+
   return (
-    <Link href="/compose" className="fab" aria-label="New post">
-      <IconPlus width={24} height={24} />
-    </Link>
+    <>
+      <button
+        type="button"
+        className="fab"
+        aria-label="New post"
+        onClick={() => setComposeOpen(true)}
+      >
+        <IconPlus width={24} height={24} />
+      </button>
+      {composeOpen && <ComposePanel onClose={() => setComposeOpen(false)} />}
+    </>
   );
 }

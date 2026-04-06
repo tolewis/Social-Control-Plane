@@ -9,7 +9,7 @@ import { DateTimePicker } from '../_components/DateTimePicker';
 import { MediaToolbar } from '../_components/MediaPicker';
 import { useConnections } from '../hooks/useConnections';
 import { createDraft } from '../_lib/api';
-import type { PublishMode, ConnectionRecord } from '../_lib/api';
+import type { PublishMode } from '../_lib/api';
 
 const CHAR_LIMITS: Record<string, number> = {
   x: 280,
@@ -32,8 +32,6 @@ export default function ComposePage() {
   const [content, setContent] = useState('');
   const [scheduledFor, setScheduledFor] = useState('');
   const [mediaIds, setMediaIds] = useState<string[]>([]);
-  const [title, setTitle] = useState('');
-  const [showTitle, setShowTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +58,6 @@ export default function ComposePage() {
   const charLimit = getCharLimit(selectedConnection?.provider);
   const charCount = content.length;
   const isOver = charCount > charLimit;
-
   const canSubmit = connectionId && content.trim().length > 0 && !isOver && !submitting;
 
   const handleSubmit = useCallback(async () => {
@@ -68,13 +65,7 @@ export default function ComposePage() {
     setSubmitting(true);
     setError(null);
     try {
-      await createDraft({
-        connectionId,
-        publishMode,
-        content: title ? `${title}\n\n${content}` : content,
-        mediaIds: mediaIds.length > 0 ? mediaIds : undefined,
-        scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
-      });
+      await createDraft({ connectionId, publishMode, content, mediaIds: mediaIds.length > 0 ? mediaIds : undefined, scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined });
       if (publishMode.startsWith('draft')) {
         router.push('/review');
       } else {
@@ -85,26 +76,19 @@ export default function ComposePage() {
     } finally {
       setSubmitting(false);
     }
-  }, [canSubmit, connectionId, publishMode, content, title, mediaIds, scheduledFor, router]);
+  }, [canSubmit, connectionId, publishMode, content, mediaIds, scheduledFor, router]);
 
   if (loading) {
-    return (
-      <section>
-        <h1 className="pageTitle">Compose</h1>
-        <p className="subtle">Loading connections...</p>
-      </section>
-    );
+    return <section><p className="subtle">Loading connections...</p></section>;
   }
 
   if (connectedAccounts.length === 0) {
     return (
       <section>
-        <h1 className="pageTitle">Compose</h1>
         <div className="emptyState">
           <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>No connected accounts</p>
           <p className="subtle" style={{ marginTop: 8 }}>
-            You need at least one connected account to compose a post.{' '}
-            <a href="/connections" style={{ color: 'var(--cyan)' }}>Connect an account</a>
+            <a href="/connections" style={{ color: 'var(--accent)' }}>Connect an account</a> to compose a post.
           </p>
         </div>
       </section>
@@ -113,78 +97,26 @@ export default function ComposePage() {
 
   return (
     <section>
-      <h1 className="pageTitle">Compose</h1>
-      <p className="lead">Create a new post for your connected accounts.</p>
+      {error && <div style={{ marginTop: 12 }}><StatusPill tone="err">{error}</StatusPill></div>}
 
-      {error && (
-        <div style={{ marginTop: 12 }}>
-          <StatusPill tone="err">{error}</StatusPill>
-        </div>
-      )}
-
-      <div className="composeForm" style={{ marginTop: 20 }}>
-        {/* Connection selector */}
+      <div className="composeForm" style={{ maxWidth: 560 }}>
         <div className="formGroup">
-          <label className="formLabel" htmlFor="connection">Account</label>
-          <CustomSelect
-            id="connection"
-            options={connectionOptions}
-            value={connectionId}
-            onChange={setConnectionId}
-            placeholder="Select an account..."
-          />
+          <label className="formLabel">Account</label>
+          <CustomSelect options={connectionOptions} value={connectionId} onChange={setConnectionId} placeholder="Select an account..." />
         </div>
 
-        {/* Publish mode toggle */}
         <div className="formGroup">
           <span className="formLabel">Mode</span>
           <div className="toggleGroup">
-            <button
-              type="button"
-              className={publishMode === 'draft-human' ? 'toggleBtn active' : 'toggleBtn'}
-              onClick={() => setPublishMode('draft-human')}
-            >
-              Draft for review
-            </button>
-            <button
-              type="button"
-              className={publishMode === 'direct-human' ? 'toggleBtn active' : 'toggleBtn'}
-              onClick={() => setPublishMode('direct-human')}
-            >
-              Publish directly
-            </button>
+            <button type="button" className={publishMode === 'draft-human' ? 'toggleBtn active' : 'toggleBtn'} onClick={() => setPublishMode('draft-human')}>Draft for review</button>
+            <button type="button" className={publishMode === 'direct-human' ? 'toggleBtn active' : 'toggleBtn'} onClick={() => setPublishMode('direct-human')}>Publish directly</button>
           </div>
         </div>
 
-        {/* Optional title */}
-        {!showTitle ? (
-          <button
-            type="button"
-            className="expandTrigger"
-            onClick={() => setShowTitle(true)}
-          >
-            + Add title
-          </button>
-        ) : (
-          <div className="formGroup">
-            <label className="formLabel" htmlFor="title">Title (optional)</label>
-            <input
-              id="title"
-              type="text"
-              className="formInput"
-              placeholder="Post title..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-        )}
-
-        {/* Content + media toolbar */}
         <div className="formGroup">
-          <label className="formLabel" htmlFor="content">Content</label>
+          <label className="formLabel">Content</label>
           <div className="composeContentWrap">
             <textarea
-              id="content"
               className="formTextarea composeContentArea"
               placeholder="What do you want to say?"
               value={content}
@@ -193,38 +125,17 @@ export default function ComposePage() {
             />
             <MediaToolbar mediaIds={mediaIds} onChange={setMediaIds} />
           </div>
-          <div className={isOver ? 'charCount over' : 'charCount'}>
-            {charCount} / {charLimit}
-          </div>
+          <div className={isOver ? 'charCount over' : 'charCount'}>{charCount} / {charLimit}</div>
         </div>
 
-        {/* Schedule */}
         <div className="formGroup">
-          <label className="formLabel" htmlFor="schedule">Schedule (optional)</label>
-          <DateTimePicker
-            id="schedule"
-            value={scheduledFor}
-            onChange={setScheduledFor}
-            placeholder="Pick date & time"
-          />
+          <label className="formLabel">Schedule (optional)</label>
+          <DateTimePicker value={scheduledFor} onChange={setScheduledFor} placeholder="Pick date & time" />
         </div>
 
-        {/* Submit */}
-        <div>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={!canSubmit}
-            onClick={handleSubmit}
-            style={{ opacity: canSubmit ? 1 : 0.5 }}
-          >
-            {submitting
-              ? 'Creating...'
-              : publishMode.startsWith('draft')
-                ? 'Create Draft'
-                : 'Queue for Publishing'}
-          </button>
-        </div>
+        <button type="button" className="btn primary" disabled={!canSubmit} onClick={handleSubmit} style={{ opacity: canSubmit ? 1 : 0.5 }}>
+          {submitting ? 'Creating...' : publishMode.startsWith('draft') ? 'Create Draft' : 'Queue for Publishing'}
+        </button>
       </div>
     </section>
   );

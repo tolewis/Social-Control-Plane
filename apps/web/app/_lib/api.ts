@@ -471,12 +471,53 @@ export interface CritiqueResult {
   summary: string;
 }
 
+export interface LayoutRect {
+  x: number; y: number; width: number; height: number;
+  left: number; top: number; right: number; bottom: number;
+  centerX: number; centerY: number; area: number;
+}
+
+export interface LayoutElement {
+  id: string;
+  type: string;
+  rect: LayoutRect;
+  fontSize?: number;
+}
+
+export interface LayoutSidecar {
+  canvas?: { width: number; height: number };
+  elements?: LayoutElement[];
+}
+
+export type RevisionActionType = 'resize' | 'reposition' | 'recolor' | 'adjust-contrast' | 'remove' | 'change-font' | 'crop';
+
+export interface RevisionAction {
+  target: string;
+  action: RevisionActionType;
+  direction?: 'smaller' | 'larger' | 'up' | 'down' | 'left' | 'right' | 'more' | 'less';
+  value?: number | string;
+  reason?: string;
+}
+
+export interface StudioReviseResult {
+  previewUrl: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  critique: CritiqueResult;
+  layout: LayoutSidecar;
+  delta: Record<string, unknown>;
+  skipped: Array<{ action: RevisionAction; reason: string }>;
+  revisedConfig: Record<string, unknown>;
+}
+
 export interface StudioPreviewResult {
   previewUrl: string;
   sizeBytes: number;
   width: number;
   height: number;
   critique: CritiqueResult;
+  layout?: LayoutSidecar;
   warnings: string[];
 }
 
@@ -493,6 +534,7 @@ export interface StudioBatchVariant {
   approved: boolean;
   mediaId: string | null;
   draftIds: string[];
+  layout?: LayoutSidecar;
 }
 
 export interface StudioBatchResult {
@@ -501,6 +543,7 @@ export interface StudioBatchResult {
   count: number;
   rendered: number;
   results: StudioBatchVariant[];
+  config?: Record<string, unknown>;
   createdAt: string;
   expiresAt: string;
 }
@@ -587,6 +630,16 @@ export function studioExport(
   return apiFetch('/studio/export', {
     method: 'POST',
     body: JSON.stringify({ batchId, variantIndices, presets, quality }),
+  });
+}
+
+export function studioRevise(
+  config: Record<string, unknown>,
+  revisions: RevisionAction[],
+): Promise<StudioReviseResult> {
+  return apiFetch<StudioReviseResult>('/studio/revise', {
+    method: 'POST',
+    body: JSON.stringify({ config, revisions }),
   });
 }
 

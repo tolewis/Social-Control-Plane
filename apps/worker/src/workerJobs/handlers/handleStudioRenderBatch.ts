@@ -85,6 +85,7 @@ export async function handleStudioRenderBatch(
         approved: false,
         mediaId: null,
         draftIds: [],
+        layout: result.layout,
       });
 
       rendered++;

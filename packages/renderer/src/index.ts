@@ -25,6 +25,10 @@ import { PRESETS as _PRESETS } from './render.js';
 export { render, normalizeConfig, buildLayoutSidecar, PRESETS } from './render.js';
 export type { NormalizedConfig, RenderOptions, RenderResult } from './render.js';
 
+// Revision system
+export { applyRevisions } from './revise.js';
+export type { RevisionAction, RevisionActionType, RevisionResult } from './revise.js';
+
 // Variation engine
 export { generateVariants } from './variations.js';
 export type { BatchOptions, VariationRule } from './variations.js';

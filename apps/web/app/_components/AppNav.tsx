@@ -49,24 +49,22 @@ type NavItem = {
 };
 
 const nav: NavItem[] = [
-  { label: 'Overview', href: '/', icon: IconGauge },
-  { label: 'Studio', href: '/studio', icon: IconBolt },
-  { label: 'Compose', href: '/compose', icon: IconPlus },
-  { label: 'Queue', href: '/queue', icon: IconQueue },
+  { label: 'Dashboard', href: '/', icon: IconGauge },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
+  { label: 'Queue', href: '/queue', icon: IconQueue },
+  { label: 'Studio', href: '/studio', icon: IconBolt },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
-  { label: 'Connections', href: '/connections', icon: IconPlug },
+];
+
+const navBottom: NavItem[] = [
   { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 
 const mobileNav: NavItem[] = [
   { label: 'Home', href: '/', icon: IconGauge },
-  { label: 'Studio', href: '/studio', icon: IconBolt },
-  { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
+  { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
-  { label: 'Connect', href: '/connections', icon: IconPlug },
-  { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -101,21 +99,39 @@ export function AppNav({ variant }: { variant: 'sidebar' | 'mobile' }) {
   }
 
   return (
-    <nav className="sideNav" aria-label="Primary">
-      {nav.map((item) => {
-        const active = isActive(pathname, item.href);
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={active ? 'sideNavItem active' : 'sideNavItem'}
-          >
-            <Icon className="navIcon" />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
+    <nav className="sideNav" aria-label="Primary" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1 }}>
+        {nav.map((item) => {
+          const active = isActive(pathname, item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={active ? 'sideNavItem active' : 'sideNavItem'}
+            >
+              <Icon className="navIcon" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        {navBottom.map((item) => {
+          const active = isActive(pathname, item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={active ? 'sideNavItem active' : 'sideNavItem'}
+            >
+              <Icon className="navIcon" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

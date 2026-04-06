@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   apiUrl,
   fetchStudioRegistry,
@@ -10,6 +10,7 @@ import {
   fetchStudioBatch,
   studioApproveBatch,
   studioExport,
+  studioRevise,
   type StudioRegistry,
   type StudioPreviewResult,
   type StudioBatchResult,
@@ -17,6 +18,10 @@ import {
   type StudioBatchSummary,
   type StudioExportItem,
   type CritiqueResult,
+  type LayoutElement,
+  type LayoutSidecar,
+  type RevisionAction,
+  type StudioReviseResult,
 } from '../_lib/api';
 
 /* ------------------------------------------------------------------ */
@@ -827,7 +832,53 @@ function InspectedVariantInfo({ variant }: { variant?: StudioBatchVariant }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Variant Lightbox                                                    */
+/*  Revision action menu options                                        */
+/* ------------------------------------------------------------------ */
+
+const ELEMENT_ACTIONS: Record<string, Array<{ label: string; action: RevisionAction }>> = {
+  headline: [
+    { label: 'Too big', action: { target: 'headline', action: 'resize', direction: 'smaller', reason: 'user: too big' } },
+    { label: 'Too small', action: { target: 'headline', action: 'resize', direction: 'larger', reason: 'user: too small' } },
+    { label: 'Move up', action: { target: 'headline', action: 'reposition', direction: 'up', reason: 'user: move up' } },
+    { label: 'Move down', action: { target: 'headline', action: 'reposition', direction: 'down', reason: 'user: move down' } },
+    { label: 'Remove', action: { target: 'headline', action: 'remove', reason: 'user: remove' } },
+  ],
+  subhead: [
+    { label: 'Too big', action: { target: 'subhead', action: 'resize', direction: 'smaller', reason: 'user: too big' } },
+    { label: 'Too small', action: { target: 'subhead', action: 'resize', direction: 'larger', reason: 'user: too small' } },
+    { label: 'Move up', action: { target: 'subhead', action: 'reposition', direction: 'up', reason: 'user: move up' } },
+    { label: 'Move down', action: { target: 'subhead', action: 'reposition', direction: 'down', reason: 'user: move down' } },
+    { label: 'Remove', action: { target: 'subhead', action: 'remove', reason: 'user: remove' } },
+  ],
+  cta: [
+    { label: 'Too big', action: { target: 'cta', action: 'resize', direction: 'smaller', reason: 'user: too big' } },
+    { label: 'Too small', action: { target: 'cta', action: 'resize', direction: 'larger', reason: 'user: too small' } },
+    { label: 'Remove', action: { target: 'cta', action: 'remove', reason: 'user: remove' } },
+  ],
+  footer: [
+    { label: 'Too big', action: { target: 'footer', action: 'resize', direction: 'smaller', reason: 'user: too big' } },
+    { label: 'Too small', action: { target: 'footer', action: 'resize', direction: 'larger', reason: 'user: too small' } },
+    { label: 'Remove', action: { target: 'footer', action: 'remove', reason: 'user: remove' } },
+  ],
+};
+
+// Fallback actions for any element not in the map above
+const DEFAULT_ELEMENT_ACTIONS: Array<{ label: string; actionType: RevisionAction['action']; direction?: RevisionAction['direction'] }> = [
+  { label: 'Too big', actionType: 'resize', direction: 'smaller' },
+  { label: 'Too small', actionType: 'resize', direction: 'larger' },
+  { label: 'Remove', actionType: 'remove' },
+];
+
+// Global actions (not tied to a specific element)
+const GLOBAL_ACTIONS: Array<{ label: string; action: RevisionAction }> = [
+  { label: 'More contrast', action: { target: 'overlay', action: 'adjust-contrast', direction: 'more', reason: 'user: more contrast' } },
+  { label: 'Less contrast', action: { target: 'overlay', action: 'adjust-contrast', direction: 'less', reason: 'user: less contrast' } },
+  { label: 'Crop up', action: { target: 'background', action: 'crop', direction: 'up', reason: 'user: crop up' } },
+  { label: 'Crop down', action: { target: 'background', action: 'crop', direction: 'down', reason: 'user: crop down' } },
+];
+
+/* ------------------------------------------------------------------ */
+/*  Variant Lightbox — with annotation overlay + revision              */
 /* ------------------------------------------------------------------ */
 
 function VariantLightbox({
@@ -846,80 +897,316 @@ function VariantLightbox({
   onToggleSelect: (idx: number) => void;
 }) {
   const v = batch.results.find(r => r.index === variantIndex);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgSize, setImgSize] = useState<{ width: number; height: number } | null>(null);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [pendingActions, setPendingActions] = useState<RevisionAction[]>([]);
+  const [revising, setRevising] = useState(false);
+  const [revisedPreview, setRevisedPreview] = useState<StudioReviseResult | null>(null);
+  const [showBefore, setShowBefore] = useState(false);
+
+  // Measure rendered image dimensions for overlay scaling
+  const measureImg = useCallback(() => {
+    if (imgRef.current) {
+      setImgSize({ width: imgRef.current.offsetWidth, height: imgRef.current.offsetHeight });
+    }
+  }, []);
 
   useEffect(() => {
+    measureImg();
+    window.addEventListener('resize', measureImg);
+    return () => window.removeEventListener('resize', measureImg);
+  }, [variantIndex, revisedPreview, measureImg]);
+
+  // Keyboard nav
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (selectedElement) { setSelectedElement(null); return; }
+        onClose();
+      }
       if (e.key === 'ArrowLeft' && variantIndex > 0) onNavigate(variantIndex - 1);
       if (e.key === 'ArrowRight' && variantIndex < batch.results.length - 1) onNavigate(variantIndex + 1);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [variantIndex, batch.results.length, onClose, onNavigate]);
+  }, [variantIndex, batch.results.length, onClose, onNavigate, selectedElement]);
+
+  // Reset state on variant change
+  useEffect(() => {
+    setSelectedElement(null);
+    setPendingActions([]);
+    setRevisedPreview(null);
+    setShowBefore(false);
+  }, [variantIndex]);
 
   if (!v || !v.previewUrl) return null;
 
-  const stop = stopLabel(v.stopRecommendation);
+  const layout = revisedPreview?.layout ?? v.layout;
+  const elements = layout?.elements ?? [];
+  const canvas = layout?.canvas ?? { width: v.width, height: v.height };
+  const currentPreviewUrl = revisedPreview ? revisedPreview.previewUrl : v.previewUrl;
+  const currentScore = revisedPreview ? revisedPreview.critique.overallScore : v.critiqueScore;
+  const currentRec = revisedPreview ? revisedPreview.critique.stopRecommendation : v.stopRecommendation;
+  const stop = stopLabel(currentRec);
   const canPrev = variantIndex > 0;
   const canNext = variantIndex < batch.results.length - 1;
 
+  // Add a revision action to the pending list
+  const addAction = (action: RevisionAction) => {
+    setPendingActions(prev => [...prev, action]);
+    setSelectedElement(null);
+  };
+
+  // Apply all pending revisions
+  const applyRevisions = async () => {
+    if (pendingActions.length === 0) return;
+    setRevising(true);
+    try {
+      const baseConfig = revisedPreview?.revisedConfig ?? batch.config ?? {};
+      const result = await studioRevise(baseConfig, pendingActions);
+      setRevisedPreview(result);
+      setPendingActions([]);
+    } catch (err) {
+      // Keep actions in queue on error
+    } finally {
+      setRevising(false);
+    }
+  };
+
+  // Get actions for a selected element
+  const getActionsForElement = (id: string): Array<{ label: string; action: RevisionAction }> => {
+    if (ELEMENT_ACTIONS[id]) return ELEMENT_ACTIONS[id];
+    return DEFAULT_ELEMENT_ACTIONS.map(a => ({
+      label: a.label,
+      action: { target: id, action: a.actionType, direction: a.direction, reason: `user: ${a.label.toLowerCase()}` },
+    }));
+  };
+
   return (
     <div
-      onClick={onClose}
+      onClick={() => { if (!selectedElement) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0,0,0,0.85)',
+        background: 'rgba(0,0,0,0.88)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'zoom-out',
+        cursor: selectedElement ? 'default' : 'zoom-out',
       }}>
-      {/* Nav: prev */}
+      {/* Nav arrows */}
       {canPrev && (
         <button onClick={e => { e.stopPropagation(); onNavigate(variantIndex - 1); }}
           style={{
             position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
             background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
             color: '#fff', fontSize: 28, width: 48, height: 48, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
           }}>&#8249;</button>
       )}
-      {/* Nav: next */}
       {canNext && (
         <button onClick={e => { e.stopPropagation(); onNavigate(variantIndex + 1); }}
           style={{
             position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
             background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
             color: '#fff', fontSize: 28, width: 48, height: 48, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
           }}>&#8250;</button>
       )}
 
-      {/* Image + info bar */}
+      {/* Main content */}
       <div onClick={e => e.stopPropagation()}
-        style={{ cursor: 'default', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <img
-          src={apiUrl(v.previewUrl)}
-          alt={`Variant ${v.index}`}
-          style={{ maxWidth: '90vw', maxHeight: 'calc(90vh - 60px)', objectFit: 'contain', borderRadius: 8 }}
-        />
-        <div style={{
-          marginTop: 10, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
-          color: '#fff', fontSize: 13, background: 'rgba(0,0,0,0.6)',
-          padding: '8px 16px', borderRadius: 8,
-        }}>
-          <span style={{ fontWeight: 700 }}>#{v.index}</span>
-          <span style={{ color: scoreColor(v.critiqueScore), fontWeight: 600 }}>{v.critiqueScore}/100</span>
-          <span style={{ color: stop.color }}>{stop.text}</span>
-          <span style={{ color: 'rgba(255,255,255,0.5)' }}>{v.width}x{v.height}</span>
-          <span style={{ color: 'rgba(255,255,255,0.5)' }}>{Math.round(v.sizeBytes / 1024)} KB</span>
-          {v.approved && <span style={{ color: 'var(--ok)', fontWeight: 600 }}>Approved</span>}
-          <button onClick={() => onToggleSelect(v.index)}
-            style={{
-              background: selectedVariants.has(v.index) ? 'var(--ok)' : 'rgba(255,255,255,0.15)',
-              border: 'none', borderRadius: 6, color: '#fff', fontSize: 12,
-              padding: '4px 12px', cursor: 'pointer', fontWeight: 600,
-            }}>
-            {selectedVariants.has(v.index) ? 'Selected' : 'Select'}
-          </button>
+        style={{ cursor: 'default', display: 'flex', gap: 16, maxWidth: '95vw', maxHeight: '95vh', alignItems: 'flex-start' }}>
+
+        {/* Image with annotation overlay */}
+        <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+          {/* Before/after toggle when revised */}
+          {revisedPreview && (
+            <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 3, display: 'flex', gap: 4 }}>
+              <button onClick={() => setShowBefore(false)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: !showBefore ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                  color: '#fff', border: 'none',
+                }}>After</button>
+              <button onClick={() => setShowBefore(true)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: showBefore ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                  color: '#fff', border: 'none',
+                }}>Before</button>
+            </div>
+          )}
+
+          <img
+            ref={imgRef}
+            src={apiUrl(showBefore ? v.previewUrl : currentPreviewUrl)}
+            alt={`Variant ${v.index}`}
+            onLoad={measureImg}
+            style={{ maxWidth: '60vw', maxHeight: 'calc(90vh - 80px)', objectFit: 'contain', borderRadius: 8, display: 'block' }}
+          />
+
+          {/* Element bounding box overlays */}
+          {showOverlay && imgSize && !showBefore && elements.length > 0 && (
+            <div style={{ position: 'absolute', top: 0, left: 0, width: imgSize.width, height: imgSize.height, pointerEvents: 'none' }}>
+              {elements.filter(el => el.type !== 'image' && el.type !== 'layout').map(el => {
+                const scaleX = imgSize.width / canvas.width;
+                const scaleY = imgSize.height / canvas.height;
+                const isSelected = selectedElement === el.id;
+                return (
+                  <div key={el.id}
+                    onClick={e => { e.stopPropagation(); setSelectedElement(isSelected ? null : el.id); }}
+                    style={{
+                      position: 'absolute',
+                      left: el.rect.x * scaleX,
+                      top: el.rect.y * scaleY,
+                      width: el.rect.width * scaleX,
+                      height: el.rect.height * scaleY,
+                      border: isSelected ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.3)',
+                      background: isSelected ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      pointerEvents: 'auto',
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                    title={el.id}>
+                    {/* Element label */}
+                    <span style={{
+                      position: 'absolute', top: -18, left: 0,
+                      fontSize: 10, color: isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+                      fontWeight: 600, whiteSpace: 'nowrap',
+                      textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                    }}>{el.id}</span>
+                  </div>
+                );
+              })}
+
+              {/* Action menu for selected element */}
+              {selectedElement && (() => {
+                const el = elements.find(e => e.id === selectedElement);
+                if (!el) return null;
+                const scaleX = imgSize!.width / canvas.width;
+                const scaleY = imgSize!.height / canvas.height;
+                const menuLeft = el.rect.x * scaleX + el.rect.width * scaleX + 8;
+                const menuTop = el.rect.y * scaleY;
+                const actions = getActionsForElement(el.id);
+                return (
+                  <div style={{
+                    position: 'absolute', left: Math.min(menuLeft, imgSize!.width - 130), top: Math.max(0, menuTop),
+                    background: 'rgba(20,20,30,0.95)', borderRadius: 8, padding: 4,
+                    border: '1px solid rgba(255,255,255,0.15)', pointerEvents: 'auto',
+                    minWidth: 120, zIndex: 5,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                  }}>
+                    {actions.map((a, i) => (
+                      <button key={i}
+                        onClick={e => { e.stopPropagation(); addAction(a.action); }}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '6px 10px', fontSize: 12, color: '#fff',
+                          background: 'transparent', border: 'none', borderRadius: 4,
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >{a.label}</button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Right panel: info + actions + pending revisions */}
+        <div style={{ width: 240, flexShrink: 0, color: '#fff', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Variant info */}
+          <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontWeight: 700 }}>Variant #{v.index}</span>
+              <span style={{ color: scoreColor(currentScore), fontWeight: 600 }}>{currentScore}/100</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', display: 'flex', gap: 8 }}>
+              <span>{v.width}x{v.height}</span>
+              <span>{Math.round(v.sizeBytes / 1024)} KB</span>
+              <span style={{ color: stop.color }}>{stop.text}</span>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+              <button onClick={() => onToggleSelect(v.index)}
+                style={{
+                  background: selectedVariants.has(v.index) ? 'var(--ok)' : 'rgba(255,255,255,0.12)',
+                  border: 'none', borderRadius: 6, color: '#fff', fontSize: 12,
+                  padding: '4px 12px', cursor: 'pointer', fontWeight: 600,
+                }}>
+                {selectedVariants.has(v.index) ? 'Selected' : 'Select'}
+              </button>
+              <button onClick={() => setShowOverlay(o => !o)}
+                style={{
+                  background: showOverlay ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.12)',
+                  border: 'none', borderRadius: 6, color: '#fff', fontSize: 12,
+                  padding: '4px 10px', cursor: 'pointer',
+                }}>
+                {showOverlay ? 'Hide guides' : 'Show guides'}
+              </button>
+            </div>
+          </div>
+
+          {/* Global actions */}
+          <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>
+              Quick actions
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {GLOBAL_ACTIONS.map((a, i) => (
+                <button key={i} onClick={() => addAction(a.action)}
+                  style={{
+                    padding: '4px 8px', fontSize: 11, borderRadius: 5,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff', cursor: 'pointer',
+                  }}>{a.label}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
+              Click elements on the image to select and edit them.
+            </div>
+          </div>
+
+          {/* Pending revision actions */}
+          {pendingActions.length > 0 && (
+            <div style={{ background: 'rgba(99,102,241,0.1)', borderRadius: 10, padding: 12, border: '1px solid rgba(99,102,241,0.2)' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Pending ({pendingActions.length})
+              </div>
+              {pendingActions.map((a, i) => (
+                <div key={i} style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginBottom: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{a.target}: {a.action}{a.direction ? ` ${a.direction}` : ''}</span>
+                  <button onClick={() => setPendingActions(prev => prev.filter((_, j) => j !== i))}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>&times;</button>
+                </div>
+              ))}
+              <button onClick={applyRevisions} disabled={revising}
+                style={{
+                  marginTop: 8, width: '100%', padding: '6px 0', borderRadius: 6,
+                  background: revising ? 'rgba(99,102,241,0.3)' : 'var(--accent)',
+                  border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: revising ? 'wait' : 'pointer',
+                }}>
+                {revising ? 'Applying...' : 'Apply revisions'}
+              </button>
+            </div>
+          )}
+
+          {/* Revision delta */}
+          {revisedPreview && Object.keys(revisedPreview.delta).length > 0 && (
+            <div style={{ background: 'rgba(54,211,153,0.08)', borderRadius: 10, padding: 12, border: '1px solid rgba(54,211,153,0.15)' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: 'var(--ok)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Changes applied
+              </div>
+              {Object.entries(revisedPreview.delta).map(([k, val]) => (
+                <div key={k} style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 2 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>{k}:</span> {String(val)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -929,7 +1216,7 @@ function VariantLightbox({
           position: 'absolute', top: 16, right: 16,
           background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
           color: '#fff', fontSize: 22, width: 40, height: 40, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
         }}>&times;</button>
     </div>
   );

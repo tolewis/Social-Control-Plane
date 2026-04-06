@@ -1,74 +1,74 @@
 /* ---------- Dark theme (default) ---------- */
 :root,
 [data-theme="dark"] {
-  --bg0: #060b13;
-  --bg1: #0b1422;
+  --bg0: #111113;
+  --bg1: #18181b;
 
   --panel: rgba(255, 255, 255, 0.05);
-  --panel-2: rgba(255, 255, 255, 0.075);
-  --panel-3: rgba(255, 255, 255, 0.11);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --panel-3: rgba(255, 255, 255, 0.10);
 
-  --text: rgba(245, 247, 251, 0.96);
-  --muted: rgba(166, 184, 205, 0.78);
-  --border: rgba(255, 255, 255, 0.12);
+  --text: #e4e4e7;
+  --muted: #8b8b94;
+  --border: rgba(255, 255, 255, 0.09);
 
-  --accent: #67c3ff;
-  --accent-2: #9cf0d4;
-  --cyan: #67c3ff;
+  --accent: #a1a1aa;
+  --accent-2: #71717a;
+  --cyan: #a1a1aa;
 
-  --ok: #36d399;
-  --warn: #fbbf24;
-  --err: #fb7185;
-  --info: #7dd3fc;
+  --ok: #4ade80;
+  --warn: #facc15;
+  --err: #f87171;
+  --info: #93c5fd;
 
-  --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
-  --ring: 0 0 0 4px rgba(103, 195, 255, 0.16);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --ring: 0 0 0 3px rgba(161, 161, 170, 0.15);
 
-  --btn-primary-bg: linear-gradient(180deg, rgba(103, 195, 255, 0.24), rgba(103, 195, 255, 0.10));
-  --btn-primary-border: rgba(103, 195, 255, 0.35);
-  --btn-primary-text: #c4e8ff;
-  --btn-ghost-text: rgba(245, 247, 251, 0.8);
-  --sidebar-bg: rgba(6, 11, 19, 0.64);
-  --topbar-bg: rgba(6, 11, 19, 0.62);
-  --body-bg: linear-gradient(180deg, var(--bg1), var(--bg0));
-  --body-glow1: rgba(103, 195, 255, 0.14);
-  --body-glow2: rgba(156, 240, 212, 0.12);
+  --btn-primary-bg: #27272a;
+  --btn-primary-border: #3f3f46;
+  --btn-primary-text: #e4e4e7;
+  --btn-ghost-text: #a1a1aa;
+  --sidebar-bg: #18181b;
+  --topbar-bg: #18181b;
+  --body-bg: #111113;
+  --body-glow1: transparent;
+  --body-glow2: transparent;
 }
 
 /* ---------- Light theme ---------- */
 [data-theme="light"] {
-  --bg0: #f4f6f9;
+  --bg0: #f4f4f5;
   --bg1: #ffffff;
 
-  --panel: rgba(0, 0, 0, 0.035);
-  --panel-2: rgba(0, 0, 0, 0.055);
-  --panel-3: rgba(0, 0, 0, 0.08);
+  --panel: rgba(0, 0, 0, 0.03);
+  --panel-2: rgba(0, 0, 0, 0.05);
+  --panel-3: rgba(0, 0, 0, 0.07);
 
-  --text: rgba(15, 23, 42, 0.94);
-  --muted: rgba(71, 85, 105, 0.82);
-  --border: rgba(0, 0, 0, 0.12);
+  --text: #18181b;
+  --muted: #71717a;
+  --border: rgba(0, 0, 0, 0.09);
 
-  --accent: #2563eb;
-  --accent-2: #059669;
-  --cyan: #2563eb;
+  --accent: #18181b;
+  --accent-2: #52525b;
+  --cyan: #18181b;
 
   --ok: #16a34a;
-  --warn: #d97706;
+  --warn: #ca8a04;
   --err: #dc2626;
-  --info: #0284c7;
+  --info: #2563eb;
 
-  --shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
-  --ring: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --ring: 0 0 0 3px rgba(0, 0, 0, 0.08);
 
-  --btn-primary-bg: linear-gradient(180deg, #2563eb, #1d4ed8);
-  --btn-primary-border: #2563eb;
+  --btn-primary-bg: #18181b;
+  --btn-primary-border: #18181b;
   --btn-primary-text: #ffffff;
-  --btn-ghost-text: rgba(15, 23, 42, 0.7);
-  --sidebar-bg: rgba(255, 255, 255, 0.85);
-  --topbar-bg: rgba(255, 255, 255, 0.82);
-  --body-bg: linear-gradient(180deg, var(--bg1), var(--bg0));
-  --body-glow1: rgba(37, 99, 235, 0.06);
-  --body-glow2: rgba(5, 150, 105, 0.05);
+  --btn-ghost-text: #52525b;
+  --sidebar-bg: #ffffff;
+  --topbar-bg: #ffffff;
+  --body-bg: #f4f4f5;
+  --body-glow1: transparent;
+  --body-glow2: transparent;
 }
 
 * {
@@ -80,10 +80,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background:
-    radial-gradient(1200px circle at 20% 0%, var(--body-glow1), transparent 55%),
-    radial-gradient(900px circle at 85% -10%, var(--body-glow2), transparent 52%),
-    var(--body-bg);
+  background: var(--body-bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
     "Apple Color Emoji", "Segoe UI Emoji";
@@ -97,7 +94,7 @@ a {
 }
 
 ::selection {
-  background: rgba(103, 195, 255, 0.24);
+  background: rgba(161, 161, 170, 0.3);
 }
 
 .subtle {
@@ -118,7 +115,6 @@ a {
   height: 100vh;
   border-right: 1px solid var(--border);
   background: var(--sidebar-bg);
-  backdrop-filter: blur(18px);
 }
 
 .sidebarInner {
@@ -302,7 +298,7 @@ a {
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
   background: var(--topbar-bg);
-  backdrop-filter: blur(18px);
+  /* no blur */
 }
 
 .topBarLeft {
@@ -457,7 +453,7 @@ a {
 /* ---------- Content primitives ---------- */
 
 .kicker {
-  color: rgba(103, 195, 255, 0.95);
+  color: var(--text);
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -595,7 +591,7 @@ a {
   position: sticky;
   top: 0;
   background: var(--panel-2);
-  backdrop-filter: blur(12px);
+  /* no blur */
   color: var(--muted);
   font-weight: 650;
   font-size: 0.78rem;
@@ -670,8 +666,8 @@ a {
 }
 
 .chip.active {
-  border-color: rgba(103, 195, 255, 0.24);
-  background: rgba(103, 195, 255, 0.12);
+  border-color: rgba(161, 161, 170, 0.16);
+  background: rgba(161, 161, 170, 0.08);
 }
 
 .mono {
@@ -736,7 +732,7 @@ a {
     border-radius: 22px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: var(--sidebar-bg);
-    backdrop-filter: blur(16px);
+    /* no blur */
     box-shadow: var(--shadow);
   }
 
@@ -1000,7 +996,7 @@ button:active, .chip:active, .listItem:active {
 .formSelect:focus,
 .formInput:focus,
 .formTextarea:focus {
-  border-color: rgba(103, 195, 255, 0.4);
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -1043,7 +1039,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .composeContentWrap:focus-within {
-  border-color: rgba(103, 195, 255, 0.4);
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -1061,7 +1057,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .composeToolbar[data-dragover] {
-  background: rgba(103, 195, 255, 0.06);
+  background: rgba(161, 161, 170, 0.04);
 }
 
 .composeToolbarRow {
@@ -1222,7 +1218,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .toggleBtn.active {
-  background: rgba(103, 195, 255, 0.14);
+  background: rgba(161, 161, 170, 0.09);
   color: var(--text);
 }
 
@@ -1306,7 +1302,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .calendarCell.today {
-  background: rgba(103, 195, 255, 0.06);
+  background: rgba(161, 161, 170, 0.04);
 }
 
 .calendarCell.otherMonth {
@@ -1314,8 +1310,8 @@ button:active, .chip:active, .listItem:active {
 }
 
 .calendarCell.selected {
-  background: rgba(103, 195, 255, 0.12);
-  box-shadow: inset 0 0 0 2px rgba(103, 195, 255, 0.3);
+  background: rgba(161, 161, 170, 0.08);
+  box-shadow: inset 0 0 0 2px rgba(161, 161, 170, 0.2);
 }
 
 .calendarDayNum {
@@ -1458,7 +1454,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .weekDayHeader.today {
-  background: rgba(103, 195, 255, 0.08);
+  background: rgba(161, 161, 170, 0.05);
 }
 
 .weekDayName {
@@ -1476,7 +1472,7 @@ button:active, .chip:active, .listItem:active {
 
 .weekDayNum.today {
   color: var(--cyan);
-  background: rgba(103, 195, 255, 0.15);
+  background: rgba(161, 161, 170, 0.10);
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -2028,9 +2024,9 @@ button:active, .chip:active, .listItem:active {
     width: 56px;
     height: 56px;
     border-radius: 18px;
-    border: 1px solid rgba(103, 195, 255, 0.3);
-    background: linear-gradient(180deg, rgba(103, 195, 255, 0.22), rgba(103, 195, 255, 0.08));
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border);
+    background: var(--panel-3);
+    box-shadow: var(--shadow);
     color: var(--text);
     cursor: pointer;
     transition: transform 120ms ease, box-shadow 120ms ease;
@@ -2042,13 +2038,13 @@ button:active, .chip:active, .listItem:active {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mobile nav — 6 items (Home, Queue, Review, Calendar, Connect, Settings) */
-/* Compose is handled by the FAB                                       */
+/* Mobile nav — 4 items (Home, Review, Queue, Calendar)                */
+/* Compose via FAB, Settings via TopBar                                */
 /* ------------------------------------------------------------------ */
 
 @media (max-width: 980px) {
   .mobileNav {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .mobileNavItem {
@@ -2080,7 +2076,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .reviewEditArea:focus {
-  border-color: rgba(103, 195, 255, 0.4);
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -2146,8 +2142,8 @@ button:active, .chip:active, .listItem:active {
   height: 48px;
   padding: 0 22px;
   border-radius: 16px;
-  border: 1px solid rgba(103, 195, 255, 0.3);
-  background: linear-gradient(180deg, rgba(103, 195, 255, 0.2), rgba(103, 195, 255, 0.06));
+  border: 1px solid var(--border);
+  background: var(--panel-2);
   color: var(--text);
   font-family: inherit;
   font-size: 1rem;
@@ -2158,11 +2154,51 @@ button:active, .chip:active, .listItem:active {
 }
 
 .ctaBtn:hover {
-  background: linear-gradient(180deg, rgba(103, 195, 255, 0.28), rgba(103, 195, 255, 0.1));
+  background: var(--panel-3);
 }
 
 .ctaBtn:active {
   transform: scale(0.97);
+}
+
+/* ---------- Dashboard counters ---------- */
+
+.dashCounter {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  min-width: 80px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s;
+}
+
+.dashCounter:hover {
+  background: var(--panel-2);
+}
+
+.dashCounterNum {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--counter-color, var(--text));
+}
+
+.dashCounterLabel {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Responsive: stack dashboard grid on small screens */
+@media (max-width: 980px) {
+  section > div[style*="grid-template-columns: 1fr 320px"] {
+    display: flex !important;
+    flex-direction: column !important;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2263,11 +2299,11 @@ button:active, .chip:active, .listItem:active {
 }
 
 .customSelectTrigger:hover {
-  border-color: rgba(103, 195, 255, 0.25);
+  border-color: rgba(161, 161, 170, 0.18);
 }
 
 .customSelect.open .customSelectTrigger {
-  border-color: rgba(103, 195, 255, 0.4);
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -2348,8 +2384,8 @@ button:active, .chip:active, .listItem:active {
 }
 
 .customSelectOption.selected {
-  background: rgba(103, 195, 255, 0.08);
-  border-color: rgba(103, 195, 255, 0.18);
+  background: rgba(161, 161, 170, 0.05);
+  border-color: rgba(161, 161, 170, 0.12);
 }
 
 .customSelectEmpty {
@@ -2562,11 +2598,11 @@ button:active, .chip:active, .listItem:active {
 }
 
 .dtTrigger:hover {
-  border-color: rgba(103, 195, 255, 0.25);
+  border-color: rgba(161, 161, 170, 0.18);
 }
 
 .dtPicker.open .dtTrigger {
-  border-color: rgba(103, 195, 255, 0.4);
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -2811,7 +2847,7 @@ button:active, .chip:active, .listItem:active {
 }
 
 .dtTimeOption.selected {
-  background: rgba(103, 195, 255, 0.15);
+  background: rgba(161, 161, 170, 0.10);
   color: var(--accent);
   font-weight: 600;
 }
@@ -2848,8 +2884,8 @@ button:active, .chip:active, .listItem:active {
 }
 
 .providerCard.highlighted {
-  border-color: rgba(103, 195, 255, 0.4);
-  box-shadow: 0 0 0 3px rgba(103, 195, 255, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(161, 161, 170, 0.06);
 }
 
 .providerCard.connected {
@@ -2913,7 +2949,7 @@ button:active, .chip:active, .listItem:active {
 
 .setupLink:hover {
   background: var(--panel-3);
-  border-color: rgba(103, 195, 255, 0.3);
+  border-color: rgba(161, 161, 170, 0.2);
 }
 
 /* Redirect URI block */

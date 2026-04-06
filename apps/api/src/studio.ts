@@ -62,6 +62,7 @@ export function registerStudioRoutes(
       width: result.config.width,
       height: result.config.height,
       critique: result.critique,
+      layout: result.layout,
       warnings: result.warnings,
     };
   });
@@ -163,6 +164,7 @@ export function registerStudioRoutes(
       count: batch.count,
       rendered: batch.rendered,
       results: batch.results ?? [],
+      config: batch.config ?? {},
       createdAt: batch.createdAt.toISOString(),
       expiresAt: batch.expiresAt.toISOString(),
     };
@@ -395,6 +397,55 @@ export function registerStudioRoutes(
       total: exports.length,
       exports: exports.filter(e => e.url),
       failed: exports.filter(e => !e.url).length,
+    };
+  });
+
+  // ---- POST /studio/revise ----
+  // Apply revision actions to a config, re-render, return before/after
+  app.post('/studio/revise', async (request, reply) => {
+    const body = z.object({
+      config: z.record(z.unknown()),
+      revisions: z.array(z.object({
+        target: z.string(),
+        action: z.enum(['resize', 'reposition', 'recolor', 'adjust-contrast', 'remove', 'change-font', 'crop']),
+        direction: z.enum(['smaller', 'larger', 'up', 'down', 'left', 'right', 'more', 'less']).optional(),
+        value: z.union([z.number(), z.string()]).optional(),
+        reason: z.string().optional(),
+      })),
+      options: z.object({
+        format: z.enum(['jpeg', 'png', 'webp']).optional(),
+        quality: z.number().min(1).max(100).optional(),
+      }).optional(),
+    }).parse(request.body);
+
+    const { render, applyRevisions } = await import('@scp/renderer');
+
+    // Apply revisions to config
+    const { revisedConfig, result: revisionResult } = applyRevisions(
+      body.config,
+      body.revisions,
+    );
+
+    // Render the revised version
+    const revised = await render(revisedConfig, body.options);
+
+    // Save revised preview
+    const previewId = randomUUID();
+    const ext = (body.options?.format ?? 'jpeg') === 'jpeg' ? 'jpg' : (body.options?.format ?? 'png');
+    const filename = `revised-${previewId}.${ext}`;
+    mkdirSync(join(STUDIO_DIR, 'previews'), { recursive: true });
+    writeFileSync(join(STUDIO_DIR, 'previews', filename), revised.image);
+
+    return {
+      previewUrl: `/uploads/studio/previews/${filename}`,
+      sizeBytes: revised.image.length,
+      width: revised.config.width,
+      height: revised.config.height,
+      critique: revised.critique,
+      layout: revised.layout,
+      delta: revisionResult.delta,
+      skipped: revisionResult.skipped,
+      revisedConfig,
     };
   });
 }
