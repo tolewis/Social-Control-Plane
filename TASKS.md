@@ -1,7 +1,7 @@
 # Social Control Plane — TASKS
 
-Status: Pre-1.0 — media publishing shipped, real FB publish verified
-Updated: 2026-03-22
+Status: Pre-1.0 — frontend refactored, Tier 1 improvements shipped
+Updated: 2026-04-06
 
 ## Phase 0 — Direction
 - [x] Confirm we should explore replacing Postiz rather than continuing to patch around it
@@ -75,4 +75,48 @@ Work plan: `docs/WORK PLAN — StrikeFrame Integration.md`
 - [x] Phase 5 — Draft integration UI (approve confirmation + "Go to Review" link) — 2026-04-06
 - [x] Phase 6 — Meta Ads export (POST /studio/export, 3 presets, 95% JPEG, download links) — 2026-04-06
 - [x] Phase 7 — Agent API docs + skill (SCP skill updated with Studio + bulk endpoints) — 2026-04-06
-- [ ] Phase 8 — Feedback loop (annotation layer, revision compiler, round-trip UI)
+- [x] Phase 8a — Revision action schema + API (7 actions, POST /studio/revise, config compiler) — 2026-04-06
+- [x] Phase 8b — Lightbox annotation overlay (element bounding boxes, action menu, before/after) — 2026-04-06
+- [ ] Phase 8c — Full feedback loop (comment threading, freeform drawing, undo/redo)
+
+## Frontend Refactor (2026-04-06)
+- [x] Navigation: 8→5 sidebar (Dashboard, Review, Queue, Studio, Calendar), Settings bottom-aligned, 4-item mobile nav
+- [x] Compose: extracted to slide-over panel (ComposePanel.tsx), accessible via "+ New" button in TopBar
+- [x] Dashboard: channel table with per-platform cadence health, queued/drafts/published per account, today timeline, upcoming sidebar
+- [x] Theme: removed AI-generated look (cyan gradients, radial glows, backdrop blur). Zinc-neutral palette for dark (#18181b) and light (#f4f4f5)
+- [x] Calendar: fixed day/timeline event overlap — events stack instead of absolute positioning
+- [x] Job status: fixed UPPERCASE/lowercase mismatch across dashboard, queue, calendar
+
+## Improvement Roadmap (2026-04-06)
+Roadmap: `.claude/plans/functional-whistling-galaxy.md`
+
+### Tier 1 — Stop the Bleeding (COMPLETE, commit `48a16f1`)
+- [x] Fix TypeScript error in handleStudioRenderBatch.ts (layout field type)
+- [x] API pagination: GET /drafts and GET /jobs support ?page=N&pageSize=N&status=X&connectionId=X
+- [x] DB indexes: Draft(connectionId, status, createdAt), PublishJob(draftId, connectionId, status), AuditEvent(createdAt, entityType+entityId)
+- [x] Slop memoization: Review page caches detectSlop() in content-keyed Map
+
+### Tier 2 — Earn Daily Trust (IN PROGRESS)
+- [ ] Verify token refresh works in production (Facebook + LinkedIn)
+- [ ] Connect X provider via OAuth + smoke test
+- [ ] Dead-letter alerting (ALERT_WEBHOOK_URL env var, POST on job failure)
+- [ ] Bulk approve on Review page (checkbox selection + POST /publish/bulk)
+- [ ] Calendar click-to-edit (click event → draft detail)
+
+### Tier 3 — Quality of Life
+- [ ] Queue page refactor (extract QueueItemDetail, deduplicate desktop/mobile ~240 lines)
+- [ ] Alt text support on media pipeline
+- [ ] Draft comments (DraftComment model, review feedback thread)
+- [ ] Post-publish engagement metrics (PostMetrics model, BullMQ fetch jobs)
+
+### Tier 4 — Platform Depth
+- [ ] Multi-image posts (Facebook, X)
+- [ ] Instagram carousels
+- [ ] X threads
+- [ ] Instagram Stories/Reels
+
+## Domain Config
+- **Primary:** `https://social.teamlewis.co` (NPM proxy host #8, cert npm-12)
+- **Legacy:** `https://social-plane.teamlewis.co` (NPM proxy host #9, cert npm-13)
+- Both point to `192.168.0.114:3000` (Next.js standalone via PM2)
+- API: `http://192.168.0.114:4001` (Fastify via PM2)

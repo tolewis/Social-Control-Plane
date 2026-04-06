@@ -115,14 +115,36 @@ async function main(): Promise<void> {
   worker.on('completed', (job) =>
     log.info('job.completed', { jobId: job.id, name: job.name }),
   );
-  worker.on('failed', (job, err) =>
+  worker.on('failed', (job, err) => {
     log.error('job.failed', {
       jobId: job?.id,
       name: job?.name,
       err: err?.message,
       stack: err?.stack,
-    }),
-  );
+    });
+
+    // Dead-letter alerting — POST to webhook on failure
+    const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+    if (webhookUrl && job) {
+      const payload = {
+        event: 'job.failed',
+        jobId: job.id,
+        jobName: job.name,
+        data: {
+          draftId: (job.data as Record<string, unknown>)?.draftId,
+          connectionId: (job.data as Record<string, unknown>)?.connectionId,
+        },
+        error: err?.message,
+        timestamp: new Date().toISOString(),
+        attempts: job.attemptsMade,
+      };
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(e => log.error('alert.webhook.failed', { err: (e as Error).message }));
+    }
+  });
   worker.on('error', (err) =>
     log.error('worker.error', { err: err.message, stack: err.stack }),
   );

@@ -7,7 +7,7 @@ import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
 import { DateTimePicker } from '../_components/DateTimePicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
-import { publishDraft, deleteDraft, updateDraft } from '../_lib/api';
+import { publishDraft, deleteDraft, updateDraft, publishBulk } from '../_lib/api';
 import { detectSlop, groupSlopMatches } from '../_lib/slop';
 import type { DraftRecord, ConnectionRecord } from '../_lib/api';
 import type { SlopResult } from '../_lib/slop';
@@ -74,6 +74,9 @@ export function ReviewConsole() {
   const [editMediaIds, setEditMediaIds] = useState<string[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleValue, setScheduleValue] = useState('');
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<string | null>(null);
 
   // Only show drafts that need review (status === 'draft')
   const reviewDrafts = useMemo(
@@ -114,16 +117,52 @@ export function ReviewConsole() {
         await updateDraft(selected.id, { scheduledFor: new Date(scheduleValue).toISOString() });
       }
       await publishDraft(selected.id);
-      setSelectedId(null);
       setShowSchedule(false);
       setScheduleValue('');
       await refetch();
+      // Auto-advance to next draft
+      const remaining = reviewDrafts.filter(d => d.id !== selected.id);
+      setSelectedId(remaining[0]?.id ?? null);
+      setBulkResult(`Approved. ${remaining.length} remaining.`);
+      setTimeout(() => setBulkResult(null), 3000);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Approve failed');
     } finally {
       setActionLoading(false);
     }
   }, [selected, scheduleValue, refetch]);
+
+  const handleBulkApprove = useCallback(async () => {
+    if (bulkSelected.size === 0) return;
+    setBulkLoading(true);
+    setBulkResult(null);
+    try {
+      const result = await publishBulk([...bulkSelected]);
+      setBulkResult(`${result.queued} approved, ${result.skipped} skipped, ${result.errored} errors`);
+      setBulkSelected(new Set());
+      await refetch();
+    } catch (err) {
+      setBulkResult(err instanceof Error ? err.message : 'Bulk approve failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [bulkSelected, refetch]);
+
+  const toggleBulkSelect = useCallback((id: string) => {
+    setBulkSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (bulkSelected.size === reviewDrafts.length) {
+      setBulkSelected(new Set());
+    } else {
+      setBulkSelected(new Set(reviewDrafts.map(d => d.id)));
+    }
+  }, [bulkSelected.size, reviewDrafts]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -287,6 +326,23 @@ export function ReviewConsole() {
   return (
     <>
       {/* ======== Desktop: split layout (list + preview panel) ======== */}
+      {/* Bulk action bar */}
+      {reviewDrafts.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--muted)' }}>
+            <input type="checkbox" checked={bulkSelected.size === reviewDrafts.length && reviewDrafts.length > 0} onChange={toggleSelectAll} />
+            {bulkSelected.size > 0 ? `${bulkSelected.size} selected` : 'Select all'}
+          </label>
+          {bulkSelected.size > 0 && (
+            <button type="button" className="btn primary" onClick={handleBulkApprove} disabled={bulkLoading}
+              style={{ fontSize: 13, padding: '4px 14px', opacity: bulkLoading ? 0.5 : 1 }}>
+              {bulkLoading ? 'Approving...' : `Approve ${bulkSelected.size}`}
+            </button>
+          )}
+          {bulkResult && <span style={{ fontSize: 12, color: bulkResult.includes('error') ? 'var(--err)' : 'var(--ok)' }}>{bulkResult}</span>}
+        </div>
+      )}
+
       <div className="split desktopOnly">
         <div className="list" aria-label="Drafts">
           {reviewDrafts.map((d) => {
@@ -304,6 +360,10 @@ export function ReviewConsole() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <input type="checkbox" checked={bulkSelected.has(d.id)}
+                    onChange={(e) => { e.stopPropagation(); toggleBulkSelect(d.id); }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ cursor: 'pointer', flexShrink: 0 }} />
                   <ProviderIcon provider={draftProvider} size={18} />
                   <span className="listItemTitle" style={{ marginBottom: 0 }}>
                     {d.content.slice(0, 50)}{d.content.length > 50 ? '...' : ''}

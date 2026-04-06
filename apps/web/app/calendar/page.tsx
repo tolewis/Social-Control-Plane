@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ProviderIcon, IconChevronLeft, IconChevronRight } from '../_components/icons';
 import { StatusPill } from '../_components/ui';
 import { useDrafts } from '../hooks/useDrafts';
@@ -269,10 +270,11 @@ function DayView({
                 {hourItems
                   .sort((a, b) => a.date.getMinutes() - b.date.getMinutes())
                   .map((item) => (
-                  <div
+                  <a
+                    href={`/queue?expand=${item.id}`}
                     key={item.id}
                     className="dayEvent"
-                    style={{ borderLeftColor: statusColor(item.status), position: 'relative', top: 'auto' }}
+                    style={{ borderLeftColor: statusColor(item.status), position: 'relative', top: 'auto', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
                   >
                     <div className="dayEventHeader">
                       <ProviderIcon provider={item.provider} size={16} />
@@ -281,7 +283,7 @@ function DayView({
                       <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
                     </div>
                     <div className="dayEventContent">{item.content.slice(0, 100)}{item.content.length > 100 ? '…' : ''}</div>
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>
@@ -367,10 +369,11 @@ function TimelineView({
             }
             const offsetPx = slot.count * 68; // stack each overlap 68px lower
             return (
-              <div
+              <a
+                href={`/queue?expand=${item.id}`}
                 key={item.id}
                 className="timelineEvent"
-                style={{ top: `calc(${topPct}% + ${offsetPx}px)`, borderLeftColor: statusColor(item.status) }}
+                style={{ top: `calc(${topPct}% + ${offsetPx}px)`, borderLeftColor: statusColor(item.status), textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
               >
                 <div className="timelineEventHeader">
                   <ProviderIcon provider={item.provider} size={16} />
@@ -383,7 +386,7 @@ function TimelineView({
                 <div className="timelineEventContent">
                   {item.content.slice(0, 120)}{item.content.length > 120 ? '…' : ''}
                 </div>
-              </div>
+              </a>
             );
           });
         })()}
