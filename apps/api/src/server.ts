@@ -2019,6 +2019,12 @@ async function proactiveTokenRefresh(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Studio routes (Creative Studio — batch rendering + approval)
+// ---------------------------------------------------------------------------
+import { registerStudioRoutes } from './studio.js';
+registerStudioRoutes(app, prisma, publishQueue);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);

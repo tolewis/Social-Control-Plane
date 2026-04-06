@@ -141,3 +141,16 @@ model ProviderConfig {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
+
+model StudioBatch {
+  id        String   @id @default(cuid())
+  status    String   @default("pending") // pending, rendering, complete, failed, expired
+  config    Json     // base RenderConfig
+  options   Json     // BatchOptions (count, variation rules)
+  results   Json?    // array of { index, previewPath, critiqueScore, approved, mediaId?, draftIds? }
+  count     Int      @default(25)
+  rendered  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // createdAt + 24h for cleanup
+}

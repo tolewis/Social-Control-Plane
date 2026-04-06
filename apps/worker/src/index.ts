@@ -60,7 +60,21 @@ async function main(): Promise<void> {
         throw new Error(`Unknown job name: ${job.name}`);
       }
 
-      const { accountId } = job.data;
+      // Studio jobs don't require account-level locks
+      if (job.name === 'studio.render-batch') {
+        return await handlers['studio.render-batch'](
+          job as Job<JobNameToData['studio.render-batch'], unknown, 'studio.render-batch'>,
+        );
+      }
+      if (job.name === 'studio.cleanup') {
+        return await handlers['studio.cleanup'](
+          job as Job<JobNameToData['studio.cleanup'], unknown, 'studio.cleanup'>,
+        );
+      }
+
+      // Draft jobs use account-level locking
+      const accountId = (job.data as { accountId?: string }).accountId;
+      if (!accountId) throw new Error(`Job ${job.name} missing accountId`);
       const lock = await accountLocks.acquireOrDelay(job, accountId);
 
       try {
@@ -82,8 +96,6 @@ async function main(): Promise<void> {
               job as Job<JobNameToData['draft.generate-visual'], unknown, 'draft.generate-visual'>,
             );
           default: {
-            // Defensive; should be unreachable due to isScpJobName.
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             throw new Error(`Unknown job name: ${job.name}`);
           }
         }

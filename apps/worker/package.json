@@ -11,8 +11,10 @@
   "dependencies": {
     "@prisma/client": "6.4.1",
     "@scp/providers": "workspace:*",
+    "@scp/renderer": "workspace:*",
     "@scp/shared": "workspace:*",
     "@scp/visual-engine": "workspace:*",
+    "sharp": "^0.33.5",
     "bullmq": "^5.43.1",
     "ioredis": "^5.4.2"
   },

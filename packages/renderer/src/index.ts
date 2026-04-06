@@ -25,6 +25,10 @@ import { PRESETS as _PRESETS } from './render.js';
 export { render, normalizeConfig, buildLayoutSidecar, PRESETS } from './render.js';
 export type { NormalizedConfig, RenderOptions, RenderResult } from './render.js';
 
+// Variation engine
+export { generateVariants } from './variations.js';
+export type { BatchOptions, VariationRule } from './variations.js';
+
 /**
  * Get the full registry of available primitives and presets.
  * This is what the /studio/registry endpoint returns.

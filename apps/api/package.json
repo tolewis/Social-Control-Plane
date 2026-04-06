@@ -16,6 +16,7 @@
     "@fastify/static": "^9.0.0",
     "@prisma/client": "6.4.1",
     "@scp/providers": "workspace:*",
+    "@scp/renderer": "workspace:*",
     "@scp/shared": "workspace:*",
     "@scp/visual-engine": "workspace:*",
     "bullmq": "^5.34.8",

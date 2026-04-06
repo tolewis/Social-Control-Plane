@@ -35,11 +35,24 @@ export type DraftGenerateVisualJobData = {
   templateData: Record<string, unknown>;
 };
 
+export type StudioRenderBatchJobData = {
+  batchId: string;
+  config: Record<string, unknown>;
+  options: { count?: number; variations?: unknown[]; seed?: number };
+};
+
+export type StudioCleanupJobData = {
+  /** If provided, clean only this batch. Otherwise clean all expired. */
+  batchId?: string;
+};
+
 export type JobNameToData = {
   'draft.publish': DraftPublishJobData;
   'draft.reconcile': DraftReconcileJobData;
   'draft.cancel': DraftCancelJobData;
   'draft.generate-visual': DraftGenerateVisualJobData;
+  'studio.render-batch': StudioRenderBatchJobData;
+  'studio.cleanup': StudioCleanupJobData;
 };
 
 export type ScpJobName = keyof JobNameToData;
@@ -55,6 +68,8 @@ const JOB_NAMES: ReadonlySet<string> = new Set<string>([
   'draft.reconcile',
   'draft.cancel',
   'draft.generate-visual',
+  'studio.render-batch',
+  'studio.cleanup',
 ]);
 
 export function isScpJobName(name: string): name is ScpJobName {

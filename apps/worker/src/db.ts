@@ -97,6 +97,7 @@ interface ModelDelegate<T> {
   create(args: { data: Record<string, unknown> }): Promise<T>;
   updateMany(args: UpdateManyArgs): Promise<{ count: number }>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<T>;
+  delete(args: { where: { id: string } }): Promise<T>;
 }
 
 export interface VisualSpecRow {
@@ -110,12 +111,26 @@ export interface VisualSpecRow {
   updatedAt: Date;
 }
 
+export interface StudioBatchRow {
+  id: string;
+  status: string;
+  config: unknown;
+  options: unknown;
+  results: unknown;
+  count: number;
+  rendered: number;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+}
+
 export interface DbClient {
   socialConnection: ModelDelegate<SocialConnectionRow>;
   draft: ModelDelegate<DraftRow>;
   publishJob: ModelDelegate<PublishJobRow>;
   media: ModelDelegate<MediaRow>;
   visualSpec: ModelDelegate<VisualSpecRow>;
+  studioBatch: ModelDelegate<StudioBatchRow>;
   $disconnect(): Promise<void>;
 }
 
