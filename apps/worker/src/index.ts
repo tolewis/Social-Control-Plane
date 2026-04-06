@@ -123,25 +123,22 @@ async function main(): Promise<void> {
       stack: err?.stack,
     });
 
-    // Dead-letter alerting — POST to webhook on failure
+    // Dead-letter alerting — POST to webhook on failure (Discord-compatible)
     const webhookUrl = process.env.ALERT_WEBHOOK_URL;
     if (webhookUrl && job) {
-      const payload = {
-        event: 'job.failed',
-        jobId: job.id,
-        jobName: job.name,
-        data: {
-          draftId: (job.data as Record<string, unknown>)?.draftId,
-          connectionId: (job.data as Record<string, unknown>)?.connectionId,
-        },
-        error: err?.message,
-        timestamp: new Date().toISOString(),
-        attempts: job.attemptsMade,
-      };
+      const data = job.data as Record<string, unknown>;
+      const msg = [
+        `**[SCP] Publish failed**`,
+        `Job: \`${job.id?.slice(0, 12)}\` (attempt ${job.attemptsMade}/3)`,
+        data?.draftId ? `Draft: \`${String(data.draftId).slice(0, 12)}\`` : '',
+        `Error: ${err?.message ?? 'unknown'}`,
+        `Time: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`,
+      ].filter(Boolean).join('\n');
+
       fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ content: msg }),
       }).catch(e => log.error('alert.webhook.failed', { err: (e as Error).message }));
     }
   });
