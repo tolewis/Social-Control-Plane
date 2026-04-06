@@ -57,6 +57,7 @@ export async function handleStudioRenderBatch(
     approved: boolean;
     mediaId: string | null;
     draftIds: string[];
+    layout?: unknown;
   }> = [];
 
   let rendered = 0;

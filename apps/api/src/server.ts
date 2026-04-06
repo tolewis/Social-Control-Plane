@@ -986,10 +986,29 @@ function draftToJson(d: DraftRow) {
   };
 }
 
-app.get('/drafts', async () => {
-  const drafts = await prisma.draft.findMany({
-    orderBy: { createdAt: 'desc' },
-  });
+app.get('/drafts', async (request) => {
+  const query = z.object({
+    page: z.coerce.number().min(1).optional(),
+    pageSize: z.coerce.number().min(1).max(200).optional(),
+    status: z.enum(['draft', 'queued', 'published', 'failed']).optional(),
+    connectionId: z.string().optional(),
+  }).parse(request.query);
+
+  const where: Record<string, unknown> = {};
+  if (query.status) where.status = query.status;
+  if (query.connectionId) where.connectionId = query.connectionId;
+
+  if (query.page) {
+    const pageSize = query.pageSize ?? 50;
+    const skip = (query.page - 1) * pageSize;
+    const [drafts, total] = await Promise.all([
+      prisma.draft.findMany({ where, orderBy: { createdAt: 'desc' }, take: pageSize, skip }),
+      prisma.draft.count({ where }),
+    ]);
+    return { drafts: drafts.map((d: DraftRow) => draftToJson(d)), total, page: query.page, pageSize };
+  }
+
+  const drafts = await prisma.draft.findMany({ where, orderBy: { createdAt: 'desc' } });
   return { drafts: drafts.map((d: DraftRow) => draftToJson(d)) };
 });
 
@@ -1650,23 +1669,36 @@ app.post('/drafts/bulk', async (request, reply) => {
 // ---------------------------------------------------------------------------
 // Jobs — read-only listing
 // ---------------------------------------------------------------------------
-app.get('/jobs', async () => {
-  const jobs = await prisma.publishJob.findMany({
-    orderBy: { createdAt: 'desc' },
+app.get('/jobs', async (request) => {
+  const query = z.object({
+    page: z.coerce.number().min(1).optional(),
+    pageSize: z.coerce.number().min(1).max(200).optional(),
+    status: z.enum(['PENDING', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'RECONCILING', 'CANCELED']).optional(),
+    connectionId: z.string().optional(),
+  }).parse(request.query);
+
+  const where: Record<string, unknown> = {};
+  if (query.status) where.status = query.status;
+  if (query.connectionId) where.connectionId = query.connectionId;
+
+  const mapJob = (j: PublishJobRow) => ({
+    id: j.id, draftId: j.draftId, connectionId: j.connectionId, status: j.status,
+    idempotencyKey: j.idempotencyKey, receiptJson: j.receiptJson, errorMessage: j.errorMessage,
+    createdAt: j.createdAt.toISOString(), updatedAt: j.updatedAt.toISOString(),
   });
-  return {
-    jobs: jobs.map((j: PublishJobRow) => ({
-      id: j.id,
-      draftId: j.draftId,
-      connectionId: j.connectionId,
-      status: j.status,
-      idempotencyKey: j.idempotencyKey,
-      receiptJson: j.receiptJson,
-      errorMessage: j.errorMessage,
-      createdAt: j.createdAt.toISOString(),
-      updatedAt: j.updatedAt.toISOString(),
-    })),
-  };
+
+  if (query.page) {
+    const pageSize = query.pageSize ?? 50;
+    const skip = (query.page - 1) * pageSize;
+    const [jobs, total] = await Promise.all([
+      prisma.publishJob.findMany({ where, orderBy: { createdAt: 'desc' }, take: pageSize, skip }),
+      prisma.publishJob.count({ where }),
+    ]);
+    return { jobs: jobs.map(mapJob), total, page: query.page, pageSize };
+  }
+
+  const jobs = await prisma.publishJob.findMany({ where, orderBy: { createdAt: 'desc' } });
+  return { jobs: jobs.map(mapJob) };
 });
 
 // ---------------------------------------------------------------------------

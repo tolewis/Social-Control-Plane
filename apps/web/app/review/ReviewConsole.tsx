@@ -81,6 +81,21 @@ export function ReviewConsole() {
     [drafts],
   );
 
+  // Memoize slop detection — compute once per draft content, not per render
+  const slopCache = useMemo(() => {
+    const cache = new Map<string, SlopResult>();
+    for (const d of reviewDrafts) {
+      if (!cache.has(d.content)) {
+        cache.set(d.content, getSlop(d.content));
+      }
+    }
+    return cache;
+  }, [reviewDrafts]);
+
+  const getSlop = useCallback((content: string): SlopResult => {
+    return slopCache.get(content) ?? detectSlop(content);
+  }, [slopCache]);
+
   const selected = useMemo(() => {
     if (selectedId) {
       const found = reviewDrafts.find((d) => d.id === selectedId);
@@ -304,7 +319,7 @@ export function ReviewConsole() {
                   )}
                 </div>
                 <div style={{ marginTop: 8 }} className="chips">
-                  <SlopPill result={detectSlop(d.content)} />
+                  <SlopPill result={getSlop(d.content)} />
                   <StatusPill tone="neutral">{d.content.length} chars</StatusPill>
                 </div>
               </div>
@@ -328,13 +343,13 @@ export function ReviewConsole() {
               </div>
             </div>
             <div className="chips">
-              <SlopPill result={detectSlop(selected.content)} />
+              <SlopPill result={getSlop(selected.content)} />
               <StatusPill tone="neutral">{selected.publishMode}</StatusPill>
             </div>
           </div>
 
           {/* Slop warnings detail */}
-          <SlopDetail result={detectSlop(selected.content)} />
+          <SlopDetail result={getSlop(selected.content)} />
 
           {editing ? (
             <div style={{ marginTop: 14 }}>
@@ -487,7 +502,7 @@ export function ReviewConsole() {
                 <span className="subtle">{connectionLabel(d, connections)}</span>
               </div>
               <div style={{ marginTop: 6 }} className="chips">
-                <SlopPill result={detectSlop(d.content)} />
+                <SlopPill result={getSlop(d.content)} />
                 <StatusPill tone="neutral">{d.content.length} chars</StatusPill>
               </div>
 
