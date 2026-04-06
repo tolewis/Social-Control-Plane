@@ -8,6 +8,7 @@ import { DateTimePicker } from '../_components/DateTimePicker';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { publishDraft, deleteDraft, updateDraft, publishBulk } from '../_lib/api';
+import { ChannelFilter, useChannelFilter } from '../_components/ChannelFilter';
 import { detectSlop, groupSlopMatches } from '../_lib/slop';
 import type { DraftRecord, ConnectionRecord } from '../_lib/api';
 import type { SlopResult } from '../_lib/slop';
@@ -66,6 +67,7 @@ function SlopDetail({ result }: { result: SlopResult }) {
 export function ReviewConsole() {
   const { drafts, loading, error, refetch } = useDrafts();
   const { connections } = useConnections();
+  const [channelFilter, setChannelFilter] = useChannelFilter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -78,10 +80,10 @@ export function ReviewConsole() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
 
-  // Only show drafts that need review (status === 'draft')
+  // Only show drafts that need review (status === 'draft'), filtered by channel
   const reviewDrafts = useMemo(
-    () => drafts.filter((d) => d.status === 'draft'),
-    [drafts],
+    () => drafts.filter((d) => d.status === 'draft' && (!channelFilter || d.connectionId === channelFilter)),
+    [drafts, channelFilter],
   );
 
   // Memoize slop detection — compute once per draft content, not per render
@@ -226,13 +228,17 @@ export function ReviewConsole() {
 
   if (reviewDrafts.length === 0) {
     return (
-      <div className="emptyState">
-        <p style={{ fontWeight: 600 }}>No drafts awaiting review</p>
-        <p className="subtle" style={{ marginTop: 8 }}>All caught up. Create a new post to get started.</p>
-        <a href="/compose" className="ctaBtn" style={{ marginTop: 16 }}>
-          + Create Post
-        </a>
-      </div>
+      <>
+        <ChannelFilter connections={connections} value={channelFilter} onChange={setChannelFilter} />
+        <div className="emptyState">
+          <p style={{ fontWeight: 600 }}>
+            {channelFilter ? 'No drafts for this channel' : 'No drafts awaiting review'}
+          </p>
+          <p className="subtle" style={{ marginTop: 8 }}>
+            {channelFilter ? 'Try selecting a different channel or "All".' : 'All caught up.'}
+          </p>
+        </div>
+      </>
     );
   }
 
@@ -326,6 +332,8 @@ export function ReviewConsole() {
   return (
     <>
       {/* ======== Desktop: split layout (list + preview panel) ======== */}
+      <ChannelFilter connections={connections} value={channelFilter} onChange={setChannelFilter} />
+
       {/* Bulk action bar */}
       {reviewDrafts.length > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>

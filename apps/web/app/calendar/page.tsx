@@ -7,6 +7,7 @@ import { StatusPill } from '../_components/ui';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
+import { ChannelFilter, useChannelFilter } from '../_components/ChannelFilter';
 import type { ConnectionRecord, PublishJobRecord } from '../_lib/api';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -413,6 +414,7 @@ export default function CalendarPage() {
   const { jobs, loading: jobLoading } = useJobs();
 
   const loading = draftLoading || connLoading || jobLoading;
+  const [channelFilter, setChannelFilter] = useChannelFilter();
 
   const today = useMemo(() => new Date(), []);
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -428,6 +430,7 @@ export default function CalendarPage() {
   const calendarItems = useMemo(() => {
     const items: CalendarItem[] = [];
     for (const draft of drafts) {
+      if (channelFilter && draft.connectionId !== channelFilter) continue;
       const dateStr = draft.scheduledFor || draft.createdAt;
       if (!dateStr) continue;
       const date = new Date(dateStr);
@@ -559,6 +562,9 @@ export default function CalendarPage() {
           </button>
         ))}
       </div>
+
+      {/* Channel filter */}
+      <ChannelFilter connections={connections} value={channelFilter} onChange={setChannelFilter} />
 
       {/* Navigation */}
       <div className="calendarHeader" style={{ marginTop: 12 }}>

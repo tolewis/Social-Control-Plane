@@ -9,6 +9,7 @@ import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
 import { publishDraft, deleteDraft, updateDraft, rescheduleDraft, revertToDraft } from '../_lib/api';
+import { ChannelFilter, useChannelFilter } from '../_components/ChannelFilter';
 import type { DraftRecord, PublishJobRecord, ConnectionRecord } from '../_lib/api';
 
 type QueueStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'needs review';
@@ -37,6 +38,7 @@ type QueueItem = {
   id: string;
   fullId: string;
   draftId: string;
+  connectionId: string;
   provider: string;
   displayName: string;
   content: string;
@@ -54,6 +56,7 @@ export default function QueuePage() {
   const { drafts, loading: draftLoading, error: draftError, refetch: refetchDrafts } = useDrafts();
   const { connections, loading: connLoading } = useConnections();
   const { jobs, loading: jobLoading, refetch: refetchJobs } = useJobs();
+  const [channelFilter, setChannelFilter] = useChannelFilter();
   const [filter, setFilter] = useState<QueueStatus | 'all'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -77,6 +80,7 @@ export default function QueuePage() {
           id: d.id.slice(0, 8),
           fullId: d.id,
           draftId: d.id,
+          connectionId: d.connectionId,
           provider: conn?.provider ?? '?',
           displayName: conn?.displayName ?? conn?.provider ?? '?',
           content: d.content.slice(0, 60),
@@ -90,9 +94,11 @@ export default function QueuePage() {
           createdAt: d.createdAt,
         };
       });
-    if (filter === 'all') return all;
-    return all.filter((i) => i.status === filter);
-  }, [drafts, connections, jobs, filter]);
+    let filtered = all;
+    if (channelFilter) filtered = filtered.filter(i => i.connectionId === channelFilter);
+    if (filter !== 'all') filtered = filtered.filter(i => i.status === filter);
+    return filtered;
+  }, [drafts, connections, jobs, filter, channelFilter]);
 
   const handleRetry = useCallback(async (draftId: string) => {
     setActionLoading(draftId);
@@ -215,6 +221,8 @@ export default function QueuePage() {
     <section>
       <h1 className="pageTitle">Queue</h1>
       <p className="lead">Track the status of queued and published posts.</p>
+
+      <ChannelFilter connections={connections} value={channelFilter} onChange={setChannelFilter} />
 
       <div className="chips" style={{ marginBottom: 16, marginTop: 12 }}>
         {(['all', 'queued', 'running', 'succeeded', 'needs review', 'failed'] as const).map((f) => (
