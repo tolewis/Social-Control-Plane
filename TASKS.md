@@ -63,3 +63,16 @@ Updated: 2026-03-22
 - [x] Re-enable PM2 systemd startup: `sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tlewis --hp /home/tlewis` (enabled 2026-03-23)
 - [ ] Add bulk scheduling / rescheduling support
 - [ ] AI-slop detection API
+
+## Creative Studio — StrikeFrame Integration
+Spec: `docs/SPEC — StrikeFrame Integration (Creative Studio).md`
+Work plan: `docs/WORK PLAN — StrikeFrame Integration.md`
+
+- [x] Phase 1 — Port StrikeFrame to `@scp/renderer` (commit `08f1d2d`, 2026-04-05)
+- [ ] Phase 2 — Studio API (`/studio/*` endpoints, StudioBatch model, worker jobs, variation engine)
+- [ ] Phase 3 — Studio UI single preview (`/studio` page, config builder, live preview)
+- [ ] Phase 4 — Studio UI batch grid (configurable 1-50, approve/reject, auto-draft)
+- [ ] Phase 5 — Draft integration UI (approve confirmation, Review Console navigation)
+- [ ] Phase 6 — Meta Ads export (re-render at ad dimensions, ZIP download)
+- [ ] Phase 7 — Agent API docs + skill (SCP skill updated, smoke test)
+- [ ] Phase 8 — Feedback loop (annotation layer, revision compiler, round-trip UI)
