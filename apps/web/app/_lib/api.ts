@@ -508,6 +508,21 @@ export interface StudioApproveResult {
   message: string;
 }
 
+export interface StudioBatchSummary {
+  batchId: string;
+  status: 'pending' | 'rendering' | 'complete' | 'failed' | 'expired';
+  count: number;
+  rendered: number;
+  approvedCount: number;
+  avgScore: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export function fetchStudioBatches(): Promise<{ batches: StudioBatchSummary[] }> {
+  return apiFetch<{ batches: StudioBatchSummary[] }>('/studio/batches');
+}
+
 export function fetchStudioRegistry(): Promise<StudioRegistry> {
   return apiFetch<StudioRegistry>('/studio/registry');
 }

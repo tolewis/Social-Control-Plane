@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   fetchStudioRegistry,
+  fetchStudioBatches,
   studioPreview,
   studioCreateBatch,
   fetchStudioBatch,
@@ -11,6 +12,7 @@ import {
   type StudioPreviewResult,
   type StudioBatchResult,
   type StudioBatchVariant,
+  type StudioBatchSummary,
   type CritiqueResult,
 } from '../_lib/api';
 
@@ -100,12 +102,43 @@ export default function StudioPage() {
   const [approveResult, setApproveResult] = useState('');
   const [inspectedVariant, setInspectedVariant] = useState<number | null>(null);
 
-  // Load registry
+  // Batch history (shows agent-created batches too)
+  const [batchHistory, setBatchHistory] = useState<StudioBatchSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const refreshHistory = useCallback(() => {
+    fetchStudioBatches()
+      .then(d => setBatchHistory(d.batches))
+      .catch(() => {});
+  }, []);
+
+  // Load a batch from history into the grid
+  const loadBatch = useCallback(async (batchId: string) => {
+    setPreview(null);
+    setBatchLoading(true);
+    setSelectedVariants(new Set());
+    setApproveResult('');
+    setInspectedVariant(null);
+    try {
+      const result = await fetchStudioBatch(batchId);
+      setBatch(result);
+    } catch {
+      /* ignore */
+    } finally {
+      setBatchLoading(false);
+    }
+  }, []);
+
+  // Load registry + history on mount
   useEffect(() => {
     fetchStudioRegistry()
       .then(setRegistry)
       .catch(() => {})
       .finally(() => setRegistryLoading(false));
+    fetchStudioBatches()
+      .then(d => setBatchHistory(d.batches))
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
   }, []);
 
   // Build the config object from form state
@@ -165,6 +198,7 @@ export default function StudioPage() {
           setBatch(result);
           if (result.status === 'complete' || result.status === 'failed') {
             setBatchLoading(false);
+            refreshHistory();
             return;
           }
         }
@@ -174,7 +208,7 @@ export default function StudioPage() {
     } catch {
       setBatchLoading(false);
     }
-  }, [buildConfig, batchCount]);
+  }, [buildConfig, batchCount, refreshHistory]);
 
   // Approve selected variants
   const handleApprove = useCallback(async () => {
@@ -183,12 +217,16 @@ export default function StudioPage() {
     try {
       const result = await studioApproveBatch(batch.batchId, [...selectedVariants]);
       setApproveResult(result.message);
+      // Reload batch to show approved state + refresh history
+      const updated = await fetchStudioBatch(batch.batchId);
+      setBatch(updated);
+      refreshHistory();
     } catch (err) {
       setApproveResult(err instanceof Error ? err.message : 'Approve failed');
     } finally {
       setApproving(false);
     }
-  }, [batch, selectedVariants]);
+  }, [batch, selectedVariants, refreshHistory]);
 
   // Toggle variant selection
   const toggleVariant = useCallback((idx: number) => {
@@ -337,6 +375,61 @@ export default function StudioPage() {
               <option value={50}>50</option>
             </select>
           </div>
+        </div>
+
+        {/* Batch History — shows agent-created and UI-created batches */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h3 className="sectionTitle" style={{ fontSize: 13, margin: 0 }}>Recent Batches</h3>
+            <button className="btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={refreshHistory}>
+              Refresh
+            </button>
+          </div>
+          {historyLoading ? (
+            <p className="subtle" style={{ fontSize: 12 }}>Loading...</p>
+          ) : batchHistory.length === 0 ? (
+            <p className="subtle" style={{ fontSize: 12 }}>No batches yet. Generate one above or let an agent create one via the API.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+              {batchHistory.map(b => (
+                <button key={b.batchId}
+                  onClick={() => loadBatch(b.batchId)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 10px', borderRadius: 8,
+                    background: batch?.batchId === b.batchId ? 'var(--panel-3)' : 'var(--panel)',
+                    border: batch?.batchId === b.batchId ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    cursor: 'pointer', width: '100%', textAlign: 'left',
+                    color: 'var(--text)', fontSize: 12,
+                    transition: 'background 0.15s',
+                  }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>
+                      {b.count} variants
+                      {b.approvedCount > 0 && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>{b.approvedCount} approved</span>}
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+                      {new Date(b.createdAt).toLocaleDateString()} {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ color: scoreColor(b.avgScore), fontWeight: 600, fontSize: 13 }}>
+                      {b.avgScore > 0 ? `${b.avgScore}` : '--'}
+                    </div>
+                    <div style={{
+                      fontSize: 10, marginTop: 2,
+                      color: b.status === 'complete' ? 'var(--ok)'
+                        : b.status === 'rendering' ? 'var(--warn)'
+                        : b.status === 'failed' ? 'var(--err)'
+                        : 'var(--muted)',
+                    }}>
+                      {b.status}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

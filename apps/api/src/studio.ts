@@ -66,6 +66,35 @@ export function registerStudioRoutes(
     };
   });
 
+  // ---- GET /studio/batches ----
+  app.get('/studio/batches', async (request) => {
+    const batches = await prisma.studioBatch.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return {
+      batches: batches.map(b => {
+        const results = (b.results ?? []) as Array<{ critiqueScore?: number; approved?: boolean }>;
+        const approvedCount = results.filter(r => r.approved).length;
+        const avgScore = results.length > 0
+          ? Math.round(results.reduce((s, r) => s + (r.critiqueScore ?? 0), 0) / results.length)
+          : 0;
+
+        return {
+          batchId: b.id,
+          status: b.status,
+          count: b.count,
+          rendered: b.rendered,
+          approvedCount,
+          avgScore,
+          createdAt: b.createdAt.toISOString(),
+          expiresAt: b.expiresAt.toISOString(),
+        };
+      }),
+    };
+  });
+
   // ---- POST /studio/batch ----
   app.post('/studio/batch', async (request, reply) => {
     const body = z.object({
