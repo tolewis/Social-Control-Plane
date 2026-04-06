@@ -427,3 +427,124 @@ export function fetchMedia() {
 export function deleteMedia(id: string) {
   return apiFetch<void>(`/media/${id}`, { method: 'DELETE' });
 }
+
+/* ------------------------------------------------------------------ */
+/*  Studio — Creative Studio API                                       */
+/* ------------------------------------------------------------------ */
+
+export interface StudioPrimitiveInfo {
+  id: string;
+  configKey: string;
+  variants: Array<{ name: string; description: string }>;
+}
+
+export interface StudioPresetInfo {
+  name: string;
+  width: number;
+  height: number;
+}
+
+export interface StudioRegistry {
+  primitives: StudioPrimitiveInfo[];
+  presets: StudioPresetInfo[];
+}
+
+export interface CritiqueDimension {
+  name: string;
+  score: number;
+  findingCount: number;
+}
+
+export interface CritiqueResult {
+  version: string;
+  status: 'pass' | 'warn' | 'fail';
+  overallScore: number;
+  dimensions: CritiqueDimension[];
+  failures: Array<{ type: string; rule: string; message: string; targets?: string[]; action?: string }>;
+  warnings: Array<{ type: string; rule: string; message: string; targets?: string[]; action?: string }>;
+  stopRecommendation: 'ship' | 'iterate' | 'escalate';
+  summary: string;
+}
+
+export interface StudioPreviewResult {
+  previewUrl: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  critique: CritiqueResult;
+  warnings: string[];
+}
+
+export interface StudioBatchVariant {
+  index: number;
+  previewPath: string;
+  previewUrl: string;
+  critiqueScore: number;
+  critiqueStatus: string;
+  stopRecommendation: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  approved: boolean;
+  mediaId: string | null;
+  draftIds: string[];
+}
+
+export interface StudioBatchResult {
+  batchId: string;
+  status: 'pending' | 'rendering' | 'complete' | 'failed' | 'expired';
+  count: number;
+  rendered: number;
+  results: StudioBatchVariant[];
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface StudioApproveResult {
+  approved: number;
+  mediaIds: string[];
+  draftIds: string[];
+  draftsPerVariant: number;
+  message: string;
+}
+
+export function fetchStudioRegistry(): Promise<StudioRegistry> {
+  return apiFetch<StudioRegistry>('/studio/registry');
+}
+
+export function studioPreview(config: Record<string, unknown>): Promise<StudioPreviewResult> {
+  return apiFetch<StudioPreviewResult>('/studio/preview', {
+    method: 'POST',
+    body: JSON.stringify({ config }),
+  });
+}
+
+export function studioCreateBatch(
+  config: Record<string, unknown>,
+  options?: { count?: number; seed?: number },
+): Promise<{ batchId: string; status: string; count: number; expiresAt: string }> {
+  return apiFetch('/studio/batch', {
+    method: 'POST',
+    body: JSON.stringify({ config, options }),
+  });
+}
+
+export function fetchStudioBatch(batchId: string): Promise<StudioBatchResult> {
+  return apiFetch<StudioBatchResult>(`/studio/batch/${batchId}`);
+}
+
+export function studioApproveBatch(
+  batchId: string,
+  approved: number[],
+  connectionIds?: string[],
+  scheduledFor?: string,
+): Promise<StudioApproveResult> {
+  return apiFetch<StudioApproveResult>(`/studio/batch/${batchId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ approved, connectionIds, scheduledFor }),
+  });
+}
+
+export function deleteStudioBatch(batchId: string) {
+  return apiFetch<void>(`/studio/batch/${batchId}`, { method: 'DELETE' });
+}

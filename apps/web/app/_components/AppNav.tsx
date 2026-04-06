@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  IconBolt,
   IconCheckSquare,
   IconGauge,
   IconPlug,
@@ -49,6 +50,7 @@ type NavItem = {
 
 const nav: NavItem[] = [
   { label: 'Overview', href: '/', icon: IconGauge },
+  { label: 'Studio', href: '/studio', icon: IconBolt },
   { label: 'Compose', href: '/compose', icon: IconPlus },
   { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
@@ -59,6 +61,7 @@ const nav: NavItem[] = [
 
 const mobileNav: NavItem[] = [
   { label: 'Home', href: '/', icon: IconGauge },
+  { label: 'Studio', href: '/studio', icon: IconBolt },
   { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
