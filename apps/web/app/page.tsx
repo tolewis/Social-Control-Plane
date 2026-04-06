@@ -58,21 +58,21 @@ export default function DashboardPage() {
   const error = cE || dE || jE;
 
   const pendingReview = useMemo(() => drafts.filter(d => d.status === 'draft').length, [drafts]);
-  const failedJobs = useMemo(() => jobs.filter(j => j.status === 'failed').length, [jobs]);
+  const failedJobs = useMemo(() => jobs.filter(j => j.status.toUpperCase() === 'FAILED').length, [jobs]);
   const unhealthyConns = useMemo(() => connections.filter(c => c.status !== 'connected').length, [connections]);
   const totalQueued = useMemo(() => drafts.filter(d => d.status === 'queued').length, [drafts]);
-  const totalPublished = useMemo(() => jobs.filter(j => j.status === 'succeeded').length, [jobs]);
+  const totalPublished = useMemo(() => jobs.filter(j => j.status.toUpperCase() === 'SUCCEEDED').length, [jobs]);
 
   /* -- Per-channel stats ------------------------------------------ */
   const channels = useMemo(() => {
     const now = Date.now();
     const weekAgo = now - 7 * 86400000;
     return connections.filter(c => c.status === 'connected').map(conn => {
-      const pub = jobs.filter(j => j.connectionId === conn.id && j.status === 'succeeded' && new Date(j.updatedAt).getTime() >= weekAgo).length;
+      const pub = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'SUCCEEDED' && new Date(j.updatedAt).getTime() >= weekAgo).length;
       // Queued = only status 'queued' (actually in publish pipeline), not 'draft' (awaiting review)
       const queued = drafts.filter(d => d.connectionId === conn.id && d.status === 'queued').length;
       const pendingDrafts = drafts.filter(d => d.connectionId === conn.id && d.status === 'draft').length;
-      const failed = jobs.filter(j => j.connectionId === conn.id && j.status === 'failed' && new Date(j.updatedAt).getTime() >= weekAgo).length;
+      const failed = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'FAILED' && new Date(j.updatedAt).getTime() >= weekAgo).length;
       // Next = only future scheduled posts
       const next = drafts
         .filter(d => d.connectionId === conn.id && d.scheduledFor && d.status === 'queued' && new Date(d.scheduledFor).getTime() > now)
@@ -103,7 +103,7 @@ export default function DashboardPage() {
       if (j.status !== 'succeeded' && j.status !== 'failed') continue;
       const draft = drafts.find(d => d.id === j.draftId);
       const conn = connections.find(c => c.id === j.connectionId);
-      items.push({ id: j.id, time: fmtTime(j.updatedAt), provider: conn?.provider ?? '?', content: draft?.content.slice(0, 50) ?? '', status: j.status === 'succeeded' ? 'published' : 'failed', tone: j.status === 'succeeded' ? 'ok' : 'err' });
+      items.push({ id: j.id, time: fmtTime(j.updatedAt), provider: conn?.provider ?? '?', content: draft?.content.slice(0, 50) ?? '', status: j.status.toUpperCase() === 'SUCCEEDED' ? 'published' : 'failed', tone: j.status.toUpperCase() === 'SUCCEEDED' ? 'ok' : 'err' });
     }
     const seen = new Set<string>();
     return items.sort((a, b) => a.time.localeCompare(b.time)).filter(i => { if (seen.has(i.id)) return false; seen.add(i.id); return true; }).slice(0, 8);

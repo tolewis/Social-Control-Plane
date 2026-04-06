@@ -25,9 +25,10 @@ function pillForStatus(status: QueueStatus) {
 
 function deriveStatus(draft: DraftRecord, jobs: PublishJobRecord[]): QueueStatus {
   const job = jobs.find((j) => j.draftId === draft.id);
-  if (job?.status === 'succeeded') return 'succeeded';
-  if (job?.status === 'processing') return 'running';
-  if (job?.status === 'failed' || draft.status === 'failed') return 'failed';
+  const jobStatus = job?.status?.toUpperCase();
+  if (jobStatus === 'SUCCEEDED') return 'succeeded';
+  if (jobStatus === 'PROCESSING') return 'running';
+  if (jobStatus === 'FAILED' || draft.status === 'failed') return 'failed';
   if (draft.status === 'draft') return 'needs review';
   return 'queued';
 }

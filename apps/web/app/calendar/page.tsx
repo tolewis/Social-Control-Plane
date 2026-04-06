@@ -416,8 +416,8 @@ export default function CalendarPage() {
       const job = jobs.find((j: PublishJobRecord) => j.draftId === draft.id);
 
       let status: CalendarItem['status'] = draft.status as CalendarItem['status'];
-      if (job?.status === 'succeeded') status = 'published';
-      else if (job?.status === 'failed') status = 'failed';
+      if (job?.status?.toUpperCase() === 'SUCCEEDED') status = 'published';
+      else if (job?.status?.toUpperCase() === 'FAILED') status = 'failed';
       else if (draft.status === 'queued') status = 'queued';
       else if (draft.status === 'draft') status = 'draft';
 
