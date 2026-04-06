@@ -326,4 +326,75 @@ export function registerStudioRoutes(
 
     return { deleted: true };
   });
+
+  // ---- POST /studio/export ----
+  // Re-render configs at Meta Ads export dimensions
+  app.post('/studio/export', async (request, reply) => {
+    const body = z.object({
+      batchId: z.string(),
+      variantIndices: z.array(z.number()),
+      presets: z.array(z.string()).min(1),
+      quality: z.number().min(1).max(100).optional(),
+    }).parse(request.body);
+
+    const batch = await prisma.studioBatch.findUnique({ where: { id: body.batchId } });
+    if (!batch) return reply.code(404).send({ error: 'not_found' });
+
+    const { render } = await import('@scp/renderer');
+    const baseConfig = batch.config as Record<string, unknown>;
+    const results = (batch.results ?? []) as Array<{ index: number }>;
+
+    const exports: Array<{
+      variantIndex: number;
+      preset: string;
+      url: string;
+      width: number;
+      height: number;
+      sizeBytes: number;
+    }> = [];
+
+    const exportDir = join(STUDIO_DIR, 'exports', body.batchId);
+    mkdirSync(exportDir, { recursive: true });
+
+    for (const idx of body.variantIndices) {
+      if (!results.find(r => r.index === idx)) continue;
+
+      for (const presetName of body.presets) {
+        try {
+          const exportConfig = { ...baseConfig, preset: presetName };
+          const result = await render(exportConfig, {
+            format: 'jpeg',
+            quality: body.quality ?? 95,
+          });
+
+          const filename = `export-v${idx}-${presetName}.jpg`;
+          writeFileSync(join(exportDir, filename), result.image);
+
+          exports.push({
+            variantIndex: idx,
+            preset: presetName,
+            url: `/uploads/studio/exports/${body.batchId}/${filename}`,
+            width: result.config.width,
+            height: result.config.height,
+            sizeBytes: result.image.length,
+          });
+        } catch (err) {
+          exports.push({
+            variantIndex: idx,
+            preset: presetName,
+            url: '',
+            width: 0,
+            height: 0,
+            sizeBytes: 0,
+          });
+        }
+      }
+    }
+
+    return {
+      total: exports.length,
+      exports: exports.filter(e => e.url),
+      failed: exports.filter(e => !e.url).length,
+    };
+  });
 }

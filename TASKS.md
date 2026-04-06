@@ -72,7 +72,7 @@ Work plan: `docs/WORK PLAN — StrikeFrame Integration.md`
 - [x] Phase 2 — Studio API (`/studio/*` endpoints, StudioBatch model, worker jobs, variation engine) — commit `a9fe064`, 2026-04-05
 - [x] Phase 3 — Studio UI single preview + batch grid (`/studio` page, config builder, preview, batch, approve) — commit `7499cdf`, 2026-04-06
 - [x] Phase 4 — Studio UI batch grid (configurable 1-50, approve/reject, auto-draft) — shipped with Phase 3
-- [ ] Phase 5 — Draft integration UI (approve confirmation, Review Console navigation)
-- [ ] Phase 6 — Meta Ads export (re-render at ad dimensions, ZIP download)
-- [ ] Phase 7 — Agent API docs + skill (SCP skill updated, smoke test)
+- [x] Phase 5 — Draft integration UI (approve confirmation + "Go to Review" link) — 2026-04-06
+- [x] Phase 6 — Meta Ads export (POST /studio/export, 3 presets, 95% JPEG, download links) — 2026-04-06
+- [x] Phase 7 — Agent API docs + skill (SCP skill updated with Studio + bulk endpoints) — 2026-04-06
 - [ ] Phase 8 — Feedback loop (annotation layer, revision compiler, round-trip UI)

@@ -568,3 +568,37 @@ export function studioApproveBatch(
 export function deleteStudioBatch(batchId: string) {
   return apiFetch<void>(`/studio/batch/${batchId}`, { method: 'DELETE' });
 }
+
+export interface StudioExportItem {
+  variantIndex: number;
+  preset: string;
+  url: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+}
+
+export function studioExport(
+  batchId: string,
+  variantIndices: number[],
+  presets: string[],
+  quality?: number,
+): Promise<{ total: number; exports: StudioExportItem[]; failed: number }> {
+  return apiFetch('/studio/export', {
+    method: 'POST',
+    body: JSON.stringify({ batchId, variantIndices, presets, quality }),
+  });
+}
+
+export function publishBulk(draftIds: string[]): Promise<{
+  total: number;
+  queued: number;
+  skipped: number;
+  errored: number;
+  results: Array<{ draftId: string; status: string; jobId?: string; reason?: string }>;
+}> {
+  return apiFetch('/publish/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ draftIds }),
+  });
+}

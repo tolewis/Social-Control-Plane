@@ -9,11 +9,13 @@ import {
   studioCreateBatch,
   fetchStudioBatch,
   studioApproveBatch,
+  studioExport,
   type StudioRegistry,
   type StudioPreviewResult,
   type StudioBatchResult,
   type StudioBatchVariant,
   type StudioBatchSummary,
+  type StudioExportItem,
   type CritiqueResult,
 } from '../_lib/api';
 
@@ -102,6 +104,10 @@ export default function StudioPage() {
   const [approving, setApproving] = useState(false);
   const [approveResult, setApproveResult] = useState('');
   const [inspectedVariant, setInspectedVariant] = useState<number | null>(null);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+  const [exportResults, setExportResults] = useState<StudioExportItem[]>([]);
 
   // Batch history (shows agent-created batches too)
   const [batchHistory, setBatchHistory] = useState<StudioBatchSummary[]>([]);
@@ -228,6 +234,25 @@ export default function StudioPage() {
       setApproving(false);
     }
   }, [batch, selectedVariants, refreshHistory]);
+
+  // Export approved variants at Meta Ads dimensions
+  const handleExport = useCallback(async () => {
+    if (!batch) return;
+    const approved = (batch.results || []).filter(r => r.approved).map(r => r.index);
+    if (approved.length === 0) return;
+    setExporting(true);
+    setExportResults([]);
+    try {
+      const result = await studioExport(
+        batch.batchId,
+        approved,
+        ['meta-feed-square', 'meta-feed-landscape', 'meta-story'],
+        95,
+      );
+      setExportResults(result.exports);
+    } catch { /* ignore */ }
+    finally { setExporting(false); }
+  }, [batch]);
 
   // Toggle variant selection
   const toggleVariant = useCallback((idx: number) => {
@@ -517,16 +542,68 @@ export default function StudioPage() {
 
             {/* Approve bar */}
             {batch.status === 'complete' && (
-              <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button className="btn primary" onClick={handleApprove}
-                  disabled={approving || selectedVariants.size === 0}
-                  style={{ opacity: approving || selectedVariants.size === 0 ? 0.5 : 1 }}>
-                  {approving ? 'Approving...' : `Approve ${selectedVariants.size} variant${selectedVariants.size !== 1 ? 's' : ''}`}
-                </button>
-                {approveResult && (
-                  <span style={{ fontSize: 13, color: approveResult.includes('failed') ? 'var(--err)' : 'var(--ok)' }}>
-                    {approveResult}
-                  </span>
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn primary" onClick={handleApprove}
+                    disabled={approving || selectedVariants.size === 0}
+                    style={{ opacity: approving || selectedVariants.size === 0 ? 0.5 : 1 }}>
+                    {approving ? 'Approving...' : `Approve ${selectedVariants.size} variant${selectedVariants.size !== 1 ? 's' : ''}`}
+                  </button>
+                  {approveResult && (
+                    <span style={{ fontSize: 13, color: approveResult.includes('failed') ? 'var(--err)' : 'var(--ok)' }}>
+                      {approveResult}
+                    </span>
+                  )}
+                </div>
+                {/* Post-approve confirmation with link to Review Console */}
+                {approveResult && !approveResult.includes('failed') && (
+                  <div style={{
+                    marginTop: 12, padding: '12px 16px', borderRadius: 10,
+                    background: 'rgba(54,211,153,0.08)', border: '1px solid rgba(54,211,153,0.2)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <span style={{ fontSize: 13, color: 'var(--ok)' }}>
+                      Drafts created and ready for review.
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn" onClick={handleExport}
+                        disabled={exporting}
+                        style={{ fontSize: 13, padding: '6px 14px', opacity: exporting ? 0.5 : 1 }}>
+                        {exporting ? 'Exporting...' : 'Export for Meta Ads'}
+                      </button>
+                      <a href="/review" style={{
+                        fontSize: 13, fontWeight: 600, color: 'var(--accent)',
+                        textDecoration: 'none', padding: '6px 14px', borderRadius: 8,
+                        background: 'var(--panel-2)', border: '1px solid var(--border)',
+                        display: 'inline-flex', alignItems: 'center',
+                      }}>
+                        Go to Review &rarr;
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {/* Export results */}
+                {exportResults.length > 0 && (
+                  <div style={{
+                    marginTop: 10, padding: '10px 14px', borderRadius: 10,
+                    background: 'var(--panel)', border: '1px solid var(--border)',
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+                      Meta Ads Exports ({exportResults.length} files)
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {exportResults.map((e, i) => (
+                        <a key={i} href={apiUrl(e.url)} target="_blank" rel="noopener noreferrer"
+                          style={{
+                            fontSize: 11, padding: '4px 10px', borderRadius: 6,
+                            background: 'var(--panel-2)', color: 'var(--accent)',
+                            textDecoration: 'none', border: '1px solid var(--border)',
+                          }}>
+                          v{e.variantIndex} {e.preset} ({e.width}x{e.height})
+                        </a>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
