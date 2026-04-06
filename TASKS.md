@@ -69,7 +69,7 @@ Spec: `docs/SPEC — StrikeFrame Integration (Creative Studio).md`
 Work plan: `docs/WORK PLAN — StrikeFrame Integration.md`
 
 - [x] Phase 1 — Port StrikeFrame to `@scp/renderer` (commit `08f1d2d`, 2026-04-05)
-- [ ] Phase 2 — Studio API (`/studio/*` endpoints, StudioBatch model, worker jobs, variation engine)
+- [x] Phase 2 — Studio API (`/studio/*` endpoints, StudioBatch model, worker jobs, variation engine) — commit `a9fe064`, 2026-04-05
 - [ ] Phase 3 — Studio UI single preview (`/studio` page, config builder, live preview)
 - [ ] Phase 4 — Studio UI batch grid (configurable 1-50, approve/reject, auto-draft)
 - [ ] Phase 5 — Draft integration UI (approve confirmation, Review Console navigation)
