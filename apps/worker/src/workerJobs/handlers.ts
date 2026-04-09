@@ -9,6 +9,7 @@ import { handleDraftPublish } from './handlers/handleDraftPublish.js';
 import { handleDraftReconcile } from './handlers/handleDraftReconcile.js';
 import { handleStudioRenderBatch } from './handlers/handleStudioRenderBatch.js';
 import { handleStudioCleanup } from './handlers/handleStudioCleanup.js';
+import { handleEngageComment } from './handlers/handleEngageComment.js';
 
 type HandlerMap = {
   [K in ScpJobName]: (
@@ -24,5 +25,6 @@ export function createJobHandlers(ctx: { log: Logger; queue: Queue; db: DbClient
     'draft.generate-visual': (job) => handleDraftGenerateVisual(job, ctx),
     'studio.render-batch': (job) => handleStudioRenderBatch(job, ctx),
     'studio.cleanup': (job) => handleStudioCleanup(job, ctx),
+    'engage.comment': (job) => handleEngageComment(job, ctx),
   };
 }

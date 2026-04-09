@@ -134,6 +134,39 @@ export interface ProviderConfigRow {
   updatedAt: Date;
 }
 
+export interface EngageCommentRow {
+  id: string;
+  engagePostId: string;
+  connectionId: string;
+  commentText: string;
+  kbSources: string[];
+  slopScore: number;
+  status: string;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  rejectionNote: string | null;
+  receiptJson: unknown;
+  fbCommentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EngagePostRow {
+  id: string;
+  engagePageId: string;
+  fbPostId: string;
+  postUrl: string | null;
+  postText: string | null;
+  authorName: string | null;
+  postedAt: Date | null;
+  likeCount: number | null;
+  commentCount: number | null;
+  shareCount: number | null;
+  discoveredAt: Date;
+  commented: boolean;
+  skippedReason: string | null;
+}
+
 export interface DbClient {
   socialConnection: ModelDelegate<SocialConnectionRow>;
   draft: ModelDelegate<DraftRow>;
@@ -144,6 +177,9 @@ export interface DbClient {
   providerConfig: ModelDelegate<ProviderConfigRow> & {
     findUnique(args: { where: { provider: string } }): Promise<ProviderConfigRow | null>;
   };
+  engageComment: ModelDelegate<EngageCommentRow>;
+  engagePost: ModelDelegate<EngagePostRow>;
+  auditEvent: { create(args: { data: Record<string, unknown> }): Promise<unknown> };
   $disconnect(): Promise<void>;
 }
 

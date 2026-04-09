@@ -2212,6 +2212,12 @@ import { registerStudioRoutes } from './studio.js';
 registerStudioRoutes(app, prisma, publishQueue);
 
 // ---------------------------------------------------------------------------
+// Engage routes (Community engagement — FB commenting)
+// ---------------------------------------------------------------------------
+import { registerEngageRoutes } from './engage.js';
+registerEngageRoutes(app, prisma, publishQueue);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);

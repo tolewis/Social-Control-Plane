@@ -46,6 +46,13 @@ export type StudioCleanupJobData = {
   batchId?: string;
 };
 
+export type EngageCommentJobData = {
+  commentId: string;
+  connectionId: string;
+  fbPostId: string;
+  commentText: string;
+};
+
 export type JobNameToData = {
   'draft.publish': DraftPublishJobData;
   'draft.reconcile': DraftReconcileJobData;
@@ -53,6 +60,7 @@ export type JobNameToData = {
   'draft.generate-visual': DraftGenerateVisualJobData;
   'studio.render-batch': StudioRenderBatchJobData;
   'studio.cleanup': StudioCleanupJobData;
+  'engage.comment': EngageCommentJobData;
 };
 
 export type ScpJobName = keyof JobNameToData;
@@ -70,6 +78,7 @@ const JOB_NAMES: ReadonlySet<string> = new Set<string>([
   'draft.generate-visual',
   'studio.render-batch',
   'studio.cleanup',
+  'engage.comment',
 ]);
 
 export function isScpJobName(name: string): name is ScpJobName {

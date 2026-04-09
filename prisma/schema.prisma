@@ -153,6 +153,67 @@ model ProviderConfig {
   updatedAt             DateTime @updatedAt
 }
 
+// ---------------------------------------------------------------------------
+// Community Engagement — commenting on fishing community FB Pages
+// ---------------------------------------------------------------------------
+
+model EngagePage {
+  id          String   @id @default(cuid())
+  fbPageId    String   @unique
+  name        String
+  category    String   @default("community") // community, brand, charter, media
+  enabled     Boolean  @default(true)
+  lastScanned DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  posts       EngagePost[]
+}
+
+model EngagePost {
+  id            String          @id @default(cuid())
+  engagePageId  String
+  engagePage    EngagePage      @relation(fields: [engagePageId], references: [id])
+  fbPostId      String          @unique
+  postUrl       String?
+  postText      String?         @db.Text
+  authorName    String?
+  postedAt      DateTime?
+  likeCount     Int?
+  commentCount  Int?
+  shareCount    Int?
+  discoveredAt  DateTime        @default(now())
+  commented     Boolean         @default(false)
+  skippedReason String?
+  comments      EngageComment[]
+
+  @@index([engagePageId])
+  @@index([discoveredAt])
+}
+
+model EngageComment {
+  id            String     @id @default(cuid())
+  engagePostId  String
+  engagePost    EngagePost @relation(fields: [engagePostId], references: [id])
+  connectionId  String
+  commentText   String     @db.Text
+  kbSources     String[]
+  slopScore     Int        @default(0)
+  status        String     @default("pending_review")
+  // pending_review | approved | rejected | posted | failed | expired
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  rejectionNote String?
+  receiptJson   Json?
+  fbCommentId   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([status])
+  @@index([engagePostId])
+  @@index([createdAt])
+}
+
 model StudioBatch {
   id        String   @id @default(cuid())
   status    String   @default("pending") // pending, rendering, complete, failed, expired
