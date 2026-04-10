@@ -19,8 +19,10 @@ import { randomUUID } from 'node:crypto';
 import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 
-// Daily cap on comments to prevent abuse
-const DAILY_COMMENT_CAP = 5;
+// Ramp schedule — configurable via /engage/config
+// Week 1: 5/day (voice calibration). Week 2: 30. Week 3: 100. Week 4+: 300.
+const DEFAULT_DAILY_CAP = 300;
+const DEFAULT_PER_PAGE_CAP = 3;
 
 export function registerEngageRoutes(
   app: FastifyInstance,
@@ -152,7 +154,10 @@ export function registerEngageRoutes(
       slopScore: z.number().int().min(0).max(100).default(0),
     }).parse(request.body);
 
-    // Enforce daily cap
+    // Enforce daily cap (configurable, default 300 at full scale)
+    const dailyCap = Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP;
+    const perPageCap = Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP;
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayCount = await prisma.engageComment.count({
@@ -161,14 +166,14 @@ export function registerEngageRoutes(
         status: { not: 'rejected' },
       },
     });
-    if (todayCount >= DAILY_COMMENT_CAP) {
+    if (todayCount >= dailyCap) {
       return reply.code(429).send({
         error: 'daily_cap_reached',
-        message: `Maximum ${DAILY_COMMENT_CAP} comments per day`,
+        message: `Maximum ${dailyCap} comments per day`,
       });
     }
 
-    // Enforce per-page-per-day cap (max 1 comment per page per day)
+    // Enforce per-page-per-day cap
     const post = await prisma.engagePost.findUnique({
       where: { id: body.engagePostId },
       select: { engagePageId: true },
@@ -181,10 +186,10 @@ export function registerEngageRoutes(
           engagePost: { engagePageId: post.engagePageId },
         },
       });
-      if (pageCommentToday >= 1) {
+      if (pageCommentToday >= perPageCap) {
         return reply.code(429).send({
           error: 'page_daily_cap_reached',
-          message: 'Maximum 1 comment per page per day',
+          message: `Maximum ${perPageCap} comments per page per day`,
         });
       }
     }
@@ -327,6 +332,104 @@ export function registerEngageRoutes(
   });
 
   // -----------------------------------------------------------------------
+  // Auto-post — create + immediately enqueue (bypasses review)
+  // Used by Captain Bill in autonomous mode after quality gates pass.
+  // Accepts a scheduledFor timestamp to spread comments through the day.
+  // -----------------------------------------------------------------------
+
+  app.post('/engage/auto-post', async (request, reply) => {
+    const body = z.object({
+      engagePostId: z.string().min(1),
+      connectionId: z.string().min(1),
+      commentText: z.string().min(1).max(8000),
+      kbSources: z.array(z.string()).default([]),
+      slopScore: z.number().int().min(0).max(100).default(0),
+      scheduledFor: z.string().datetime().optional(), // ISO timestamp for delayed posting
+    }).parse(request.body);
+
+    // Same rate limit checks as POST /engage/comments
+    const dailyCap = Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP;
+    const perPageCap = Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayCount = await prisma.engageComment.count({
+      where: { createdAt: { gte: todayStart }, status: { not: 'rejected' } },
+    });
+    if (todayCount >= dailyCap) {
+      return reply.code(429).send({ error: 'daily_cap_reached', message: `Maximum ${dailyCap} comments per day` });
+    }
+
+    const post = await prisma.engagePost.findUnique({
+      where: { id: body.engagePostId },
+      select: { engagePageId: true, fbPostId: true },
+    });
+    if (!post) return reply.code(404).send({ error: 'post_not_found' });
+
+    const pageCommentToday = await prisma.engageComment.count({
+      where: {
+        createdAt: { gte: todayStart },
+        status: { not: 'rejected' },
+        engagePost: { engagePageId: post.engagePageId },
+      },
+    });
+    if (pageCommentToday >= perPageCap) {
+      return reply.code(429).send({ error: 'page_daily_cap_reached', message: `Maximum ${perPageCap} comments per page per day` });
+    }
+
+    // Create comment record with status 'approved' (auto-approved by quality gates)
+    const comment = await prisma.engageComment.create({
+      data: {
+        engagePostId: body.engagePostId,
+        connectionId: body.connectionId,
+        commentText: body.commentText,
+        kbSources: body.kbSources,
+        slopScore: body.slopScore,
+        status: 'approved',
+        reviewedBy: 'auto:quality-gates',
+        reviewedAt: new Date(),
+      },
+    });
+
+    // Calculate delay — either from scheduledFor or random 30-120s
+    let delayMs = Math.floor(30_000 + Math.random() * 90_000); // 30-120s default
+    if (body.scheduledFor) {
+      const targetTime = new Date(body.scheduledFor).getTime();
+      const now = Date.now();
+      delayMs = Math.max(0, targetTime - now);
+    }
+
+    // Enqueue for posting
+    const jobId = `engage:comment:${comment.id}`;
+    await publishQueue.add(
+      'engage.comment',
+      {
+        commentId: comment.id,
+        connectionId: body.connectionId,
+        fbPostId: post.fbPostId,
+        commentText: body.commentText,
+      },
+      {
+        jobId,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        delay: delayMs,
+      },
+    );
+
+    await audit('EngageComment', comment.id, 'auto-posted', {
+      engagePostId: body.engagePostId,
+      slopScore: body.slopScore,
+      scheduledDelayMs: delayMs,
+    });
+
+    return reply.code(201).send({
+      comment: { id: comment.id, status: 'approved', jobId },
+      scheduledDelayMs: delayMs,
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Stats — daily engagement summary
   // -----------------------------------------------------------------------
 
@@ -343,7 +446,8 @@ export function registerEngageRoutes(
 
     return {
       today: todayComments,
-      dailyCap: DAILY_COMMENT_CAP,
+      dailyCap: Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP,
+      perPageCap: Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP,
       pending: pendingCount,
       totalPosted: postedCount,
       activePages: totalPages,
