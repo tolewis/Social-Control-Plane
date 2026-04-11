@@ -32,7 +32,7 @@ function isGoldenHour(h: number): boolean {
   return GOLDEN_WINDOWS.some((w) => h >= w.start && h < w.end);
 }
 
-type CalendarView = 'month' | 'week' | 'day' | 'timeline';
+type CalendarView = 'month' | 'week' | 'timeline';
 
 function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -566,7 +566,7 @@ export default function CalendarPage() {
 
       {/* View switcher */}
       <div className="calViewSwitcher">
-        {(['month', 'week', 'day', 'timeline'] as const).map((v) => (
+        {(['month', 'week', 'timeline'] as const).map((v) => (
           <button
             key={v}
             type="button"
@@ -639,10 +639,6 @@ export default function CalendarPage() {
 
       {view === 'week' && (
         <WeekView weekDays={weekDays} today={today} itemsByDate={itemsByDate} />
-      )}
-
-      {view === 'day' && (
-        <DayView viewDate={viewDate} today={today} itemsByDate={itemsByDate} />
       )}
 
       {view === 'timeline' && (

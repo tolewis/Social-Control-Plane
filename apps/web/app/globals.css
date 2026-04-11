@@ -1850,13 +1850,56 @@ button:active, .chip:active, .listItem:active {
     font-size: 0.68rem;
   }
 
+  .timelineWrap {
+    border-radius: 10px;
+  }
+
+  .timelineContainer {
+    height: calc(16 * 38px); /* tighter: 38px per hour vs 60px desktop */
+    max-height: 60vh;
+  }
+
   .timelineEvent {
-    left: 56px;
-    right: 8px;
+    left: 48px;
+    right: 6px;
+    padding: 4px 8px;
+  }
+
+  .timelineEvent.compact {
+    padding: 3px 8px;
+  }
+
+  .timelineEventHeader {
+    font-size: 0.78rem;
+    gap: 4px;
+  }
+
+  .timelineEventContent {
+    font-size: 0.75rem;
+    margin-top: 2px;
   }
 
   .timelineNowDot {
-    margin-left: 43px;
+    margin-left: 38px;
+    width: 8px;
+    height: 8px;
+  }
+
+  .timelineHourLabel {
+    width: 42px;
+    padding: 0 4px;
+    font-size: 0.62rem;
+  }
+
+  .dayViewTitle {
+    font-size: 0.88rem;
+    padding: 8px 10px;
+  }
+
+  .goldenLegend {
+    padding: 4px 10px;
+    font-size: 0.68rem;
+    gap: 8px;
   }
 }
 
