@@ -106,24 +106,85 @@ Look at the actual image. Check:
 
 ## Headline Copy Rules
 
-1. **Two lines.** First line is the setup. Second line is the payoff.
-2. **Power word in orange.** Not the last word — the EMOTIONALLY IMPORTANT word.
-3. **End with a period.** Premium brands use periods, not exclamation marks.
-4. **2-3 words per line** for contrarian hook (stacked). Full sentences for other templates.
-5. **Identity-first, specs-as-proof.** "Stop rigging at 5 AM." not "480lb stainless cable."
+1. **Specific, not generic.** Test: could this headline work for ANY fishing product? If yes, it's too weak. "BUILT FOR OFFSHORE." = generic garbage. "12 OUNCES OF WAHOO INSURANCE." = specific, vivid, scroll-stopping.
+2. **Identity-first, specs-as-proof.** Lead with who the buyer becomes or what changes, not what the product is. "STOP RIGGING. START FISHING." not "Pre-Rigged Wahoo Kit."
+3. **Power word in orange.** Not the last word — the EMOTIONALLY IMPORTANT word.
+4. **End with a period.** Premium brands use periods, not exclamation marks.
+5. **Create a mental image or challenge.** The reader should see themselves or feel provoked. "29 BUCKS. TOURNAMENT SMOKE." puts them on the boat.
+6. **Use the product's sharpest edge.** What's the ONE thing that makes this product different? Time saved? Price per unit? Material grade? Stainless when competitors use chrome? THAT is the headline, not a category label.
+7. **Two lines for two-tone templates.** First line = setup (dark). Second line = payoff (orange). Single-line for bold-slogan format.
+8. **2-3 words per line** for contrarian hook (stacked). Full sentences for other templates.
+
+### Headline Anti-Patterns (DO NOT USE)
+- "YOUR [PRODUCT CATEGORY]." — "Your Wahoo Spread" = category label, not a headline
+- "BUILT FOR [CONTEXT]." — "Built for Offshore" = vague, applies to anything
+- "[ADJECTIVE] [NOUN]." — "Offshore Ready" = two generic words
+- Anything that describes the product category instead of making a CLAIM
+
+### Good Headline Examples (from proven templates)
+- "ONE BOX. FULL WAHOO SPREAD." — specific scope, identity
+- "IS YOUR HARDWARE READY?" — challenge, provocation
+- "STOP RIGGING. START FISHING." — pain→solution, identity shift
+- "12 OUNCES OF WAHOO INSURANCE." — vivid, specific, emotional
+- "29 BUCKS. TOURNAMENT SMOKE." — price + performance
+- "7 LURES. ONE CLIP." — specific number + action
+
+## Logo Rules (HARD REQUIREMENTS)
+
+1. **NEVER invert the TackleRoom logo.** No white logos, no negated logos, no exceptions.
+2. **Always place logo on a white or near-white background.** If the surrounding area is dark, create an opaque white rounded rect (`rx=10`, fill="white") behind the logo.
+3. **Logo on white elements:** headline band (warm/white bg templates), review card (testimonial), benefit strip (if white), or dedicated white logo frame.
+4. **Logo frame on dark areas:** `190×65px` opaque white rounded rect. Center logo inside: `x = frameX + (frameW - logoW) / 2`, `y = frameY + (frameH - logoH) / 2`. The actual logo after `trim()` + `resize({fit:'inside'})` is ~111×50, NOT the target dimensions.
+5. **Logo size:** 200px wide on warm/light backgrounds, 140px wide (in 190px frame) on dark backgrounds.
+
+## Pricing & Claims (LEGAL REQUIREMENTS)
+
+1. **Verify EVERY price against Shopify** before burning it into an image. Prices change.
+2. **"SAVE $X" must reflect real math.** Kit price vs sum of components. Round to nearest dollar.
+3. **Free shipping threshold is $69**, not $99. Confirmed across all email templates and existing Meta ads.
+4. **"BEST SELLER" / "5-STAR RATED"** — must be defensible. Verify against sales data or Judge.me reviews.
+5. **"FROM $X"** — only use if multiple price points exist. If all variants are the same price, just state the price.
+
+## Badge / Starburst Rules
+
+1. **Composite badges AFTER the product image** in the Sharp layer order. Otherwise the product card covers the badge.
+2. **Position badges to intentionally overlap the product card edge** — this creates visual energy (like LMNT's "FREE SAMPLE PACK" starburst).
+3. **Badge text must be big enough to read at phone scroll speed.** Use 22-28px font, 900 weight.
+
+## QC Process (MANDATORY before presenting to Tim)
+
+1. **Render all variants.**
+2. **Visually inspect every image at full resolution.** Not thumbnails.
+3. Check each image for:
+   - [ ] Badge fully visible, not hidden behind product
+   - [ ] Logo visible on white background, not inverted
+   - [ ] Logo centered in its frame
+   - [ ] No element overlap (logo vs product, headline vs badge, etc.)
+   - [ ] Headline readable at phone scroll speed
+   - [ ] All text spelled correctly
+   - [ ] Pricing/claims match Shopify reality
+   - [ ] Would YOU stop scrolling for this headline?
+4. **Fix all issues before presenting.** Don't show work with known bugs.
+
+## Color Palette System
+
+Three palettes × optional mirroring for asymmetric templates:
+- **dark/default** — charcoal hero (#1A1A1A), white headline band
+- **blue** — royal blue hero (#001EC3), white headline band  
+- **warm** — charcoal hero (#2A2A2A), warm stone headline band (#F6F5F3)
 
 ## Lessons Learned (prevent repeat mistakes)
 
 1. **Canva AI generation cannot replicate specific ad styles.** It picks generic templates. Don't use it for style replication.
-2. **Canva editing API cannot change font family.** Supports size/weight/color but not the font itself.
-3. **StrikeFrame's dark-mood pipeline fights light backgrounds.** Bypass it — use Sharp + SVG directly.
-4. **Background removal is a losing battle.** White roundrect shapes behind products work better than rembg or flood-fill on any background.
-5. **SVG tspan elements collapse whitespace.** Use `xml:space="preserve"` on the parent text element.
-6. **Don't invert the TackleRoom logo for dark backgrounds.** It looks bad. Either place the logo on a white element (card, strip) or use a light-bg template.
-7. **Review every render before showing Tim.** AI-on-AI stacking produces garbage. Look at your output.
-8. **Emphasis the right word, not the last word.** "quality" not "Room." "second to none" not just "none."
-9. **LMNT's core tactic: the accent color does the stopping, not the headline text.** Colored strips, bars, blocks create the eye-catch. Headlines are mostly white or dark.
-10. **White space is a design element.** Cramming quote→stars→card with no air between them kills the premium feel. LMNT uses generous vertical padding between zones.
+2. **StrikeFrame's dark-mood pipeline fights light backgrounds.** Bypass it — use Sharp + SVG directly.
+3. **Background removal is a losing battle.** White roundrect shapes behind products work better than rembg or flood-fill on any background.
+4. **SVG tspan elements collapse whitespace.** Use `xml:space="preserve"` on the parent text element.
+5. **LMNT's core tactic: the accent color does the stopping, not the headline text.** Colored strips, bars, blocks create the eye-catch. Headlines are mostly white or dark.
+6. **White space is a design element.** Cramming quote→stars→card with no air between them kills the premium feel. LMNT uses generous vertical padding between zones.
+7. **Generic headlines waste the entire ad.** "Built for Offshore" stops nobody. Every hour spent on layout is wasted if the headline doesn't stop the scroll. Write the headline FIRST, from the product's sharpest competitive edge + the buyer's pain point.
+8. **Greenscreen compositing requires professional tools.** PIL/Sharp chroma key can't match lighting, perspective, or edge quality. Don't attempt it — use studio-style (white bg) product shots or real lifestyle photography.
+9. **Emoji icons don't reliably render in SVG.** Use SVG path-based icons (bolt, check, shield, target, gear, star, anchor, wave, hook).
+10. **Sharp composite order matters.** Layers are painted in array order. Anything that should appear "on top" (badges, logos) must come AFTER the elements they overlap.
 
 ## File Locations
 
