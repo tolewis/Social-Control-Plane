@@ -164,24 +164,112 @@ def scrape_posts(page_ctx, numeric_id, page_name):
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # Extract post text from native-text divs
-    # The text appears in <div dir="auto" class="native-text ..."> elements
-    text_blocks = []
-    for m in re.finditer(r'<div dir="auto"[^>]*class="native-text[^"]*"[^>]*>(.*?)</div>', html, re.DOTALL):
-        inner = re.sub(r'<[^>]+>', '', m.group(1)).strip()
-        inner = inner.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
-        if len(inner) > 30:  # Skip short UI elements
-            text_blocks.append(inner)
+    # Extract post text from the body text (more reliable than HTML parsing).
+    # Strategy: find the "Posts" section boundary, then split by timestamp patterns
+    # (e.g., "5d", "23h", "Mar 14") which separate individual posts.
+    body_text = page_ctx.inner_text("body")
 
-    # Match text blocks to posts (they appear in order)
-    for i, post in enumerate(posts):
-        if i < len(text_blocks):
-            post["post_text"] = text_blocks[i][:2000]
+    # Find "Posts" section — everything after it is actual post content
+    posts_idx = body_text.find("\nPosts\n")
+    if posts_idx < 0:
+        posts_idx = body_text.find("\nPosts ")
+    if posts_idx < 0:
+        posts_idx = len(body_text) // 3  # fallback: skip first third (page info)
 
-    # If we found text but no post IDs, create hash-based IDs
-    if not posts and text_blocks:
-        import hashlib
-        for text in text_blocks:
+    post_section = body_text[posts_idx:]
+
+    # Parse individual posts from the body text.
+    # Each post follows this pattern on mbasic:
+    #   [Page Name] is at [Location].       <-- header (page name repeats for every post)
+    #   [timestamp]                          <-- "5d", "Mar 27", etc.
+    #   [icon]                               <-- usually 󳄫
+    #   [ACTUAL POST TEXT ... See more]      <-- this is what we want
+    #   [engagement counts]                  <-- "40", "4 Comments"
+    #
+    # Strategy: split on the page name pattern that repeats for each post,
+    # then extract the text between the timestamp and the engagement counts.
+
+    post_texts = []
+    lines = post_section.split("\n")
+    in_post = False
+    current_text_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Skip pure icon lines (Unicode private use area U+F0000+)
+        if all(ord(c) > 0xF000 or c.isspace() for c in stripped):
+            in_post = True  # icon after timestamp = post text coming next
+            continue
+
+        # Engagement counts signal end of a post
+        if (re.match(r'^[\d,.]+[KkMm]?$', stripped)
+            or re.match(r'^[\d,.]+[KkMm]?\s+(Comments?|Shares?|Likes?)$', stripped, re.I)
+            or re.match(r'^\S+ and \d+ others$', stripped)):
+            if current_text_lines:
+                text = " ".join(current_text_lines).strip()
+                # Clean up "... See more" suffix
+                text = re.sub(r'\s*\.\.\.\s*See more$', '', text)
+                if len(text) > 25:
+                    post_texts.append(text)
+                current_text_lines = []
+                in_post = False
+            continue
+
+        # Skip "Loading more" and "Open app"
+        if stripped.lower() in ("loading more…", "open app", "loading more"):
+            continue
+
+        # Skip timestamp lines
+        if re.match(r'^‎.*‎?$', stripped) and len(stripped) < 60:
+            # Timestamps have left-to-right marks (U+200E)
+            in_post = True
+            continue
+        if re.match(r'^\d+[dhm]$', stripped):
+            in_post = True
+            continue
+
+        # Skip page name repetitions (header for each post)
+        if page_name and (page_name.lower() in stripped.lower()[:len(page_name)+20]):
+            # Page name line = start of a new post, flush previous
+            if current_text_lines:
+                text = " ".join(current_text_lines).strip()
+                text = re.sub(r'\s*\.\.\.\s*See more$', '', text)
+                if len(text) > 25:
+                    post_texts.append(text)
+                current_text_lines = []
+            in_post = False  # Skip the header lines, wait for icon/timestamp
+            continue
+
+        # Skip navigation labels
+        if stripped.lower() in ("posts", "photos", "reels", "mentions", "details",
+                                "links", "contact info", "see all", "reply...",
+                                "follow", "message", "like"):
+            continue
+
+        # If we're in the post text zone, collect lines
+        if in_post and len(stripped) > 3:
+            current_text_lines.append(stripped)
+
+    # Flush last
+    if current_text_lines:
+        text = " ".join(current_text_lines).strip()
+        text = re.sub(r'\s*\.\.\.\s*See more$', '', text)
+        if len(text) > 25:
+            post_texts.append(text)
+
+    # Match extracted texts to posts with IDs, or create hash-based posts
+    import hashlib
+    if posts:
+        # Assign text to posts (best effort, sequential matching)
+        for i, post in enumerate(posts):
+            if i < len(post_texts):
+                post["post_text"] = post_texts[i][:2000]
+    else:
+        # No post IDs found — create hash-based entries from text
+        for text in post_texts:
             text_hash = hashlib.md5(text[:200].encode()).hexdigest()[:12]
             fb_post_id = f"{numeric_id}_text_{text_hash}"
             if fb_post_id not in seen:
