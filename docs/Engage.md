@@ -95,7 +95,7 @@ Env-driven caps:
 - `ENGAGE_DAILY_CAP`
 - `ENGAGE_PER_PAGE_CAP`
 
-These are enforced in the API before a comment draft or auto-post is accepted.
+These are enforced on actual posting attempts, at approve-time and auto-post time. Draft creation stays open so approval-first queues do not burn the daily cap before anything goes live.
 
 Current operating stance:
 - keep daily volume intentionally bounded

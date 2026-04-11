@@ -53,6 +53,19 @@ export function registerEngageRoutes(
     };
   }
 
+  function startOfToday(): Date {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return todayStart;
+  }
+
+  function postedTodayWhere(todayStart: Date) {
+    return {
+      reviewedAt: { gte: todayStart },
+      status: { in: ['approved', 'posted', 'failed'] as string[] },
+    };
+  }
+
   // Helper: audit event
   async function audit(entityType: string, entityId: string, action: string, payload?: unknown) {
     await prisma.auditEvent.create({
@@ -221,46 +234,6 @@ export function registerEngageRoutes(
       slopScore: z.number().int().min(0).max(100).default(0),
     }).parse(request.body);
 
-    // Enforce daily cap (configurable, default 300 at full scale)
-    const dailyCap = Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP;
-    const perPageCap = Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP;
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayCount = await prisma.engageComment.count({
-      where: {
-        createdAt: { gte: todayStart },
-        status: { not: 'rejected' },
-      },
-    });
-    if (todayCount >= dailyCap) {
-      return reply.code(429).send({
-        error: 'daily_cap_reached',
-        message: `Maximum ${dailyCap} comments per day`,
-      });
-    }
-
-    // Enforce per-page-per-day cap
-    const post = await prisma.engagePost.findUnique({
-      where: { id: body.engagePostId },
-      select: { engagePageId: true },
-    });
-    if (post) {
-      const pageCommentToday = await prisma.engageComment.count({
-        where: {
-          createdAt: { gte: todayStart },
-          status: { not: 'rejected' },
-          engagePost: { engagePageId: post.engagePageId },
-        },
-      });
-      if (pageCommentToday >= perPageCap) {
-        return reply.code(429).send({
-          error: 'page_daily_cap_reached',
-          message: `Maximum ${perPageCap} comments per page per day`,
-        });
-      }
-    }
-
     const comment = await prisma.engageComment.create({
       data: {
         engagePostId: body.engagePostId,
@@ -335,6 +308,34 @@ export function registerEngageRoutes(
         error: 'comment_target_not_commentable',
         reason: targetStatus.reason,
         message: targetStatus.message,
+      });
+    }
+
+    const dailyCap = Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP;
+    const perPageCap = Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP;
+    const todayStart = startOfToday();
+
+    const [todayCount, pageCommentToday] = await Promise.all([
+      prisma.engageComment.count({ where: postedTodayWhere(todayStart) }),
+      prisma.engageComment.count({
+        where: {
+          ...postedTodayWhere(todayStart),
+          engagePost: { engagePageId: comment.engagePost.engagePageId },
+        },
+      }),
+    ]);
+
+    if (todayCount >= dailyCap) {
+      return reply.code(429).send({
+        error: 'daily_cap_reached',
+        message: `Maximum ${dailyCap} comments per day`,
+      });
+    }
+
+    if (pageCommentToday >= perPageCap) {
+      return reply.code(429).send({
+        error: 'page_daily_cap_reached',
+        message: `Maximum ${perPageCap} comments per page per day`,
       });
     }
 
@@ -428,14 +429,13 @@ export function registerEngageRoutes(
       scheduledFor: z.string().datetime().optional(), // ISO timestamp for delayed posting
     }).parse(request.body);
 
-    // Same rate limit checks as POST /engage/comments
+    // Rate limit checks apply to actual posting attempts, not stored drafts.
     const dailyCap = Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP;
     const perPageCap = Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP;
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfToday();
 
     const todayCount = await prisma.engageComment.count({
-      where: { createdAt: { gte: todayStart }, status: { not: 'rejected' } },
+      where: postedTodayWhere(todayStart),
     });
     if (todayCount >= dailyCap) {
       return reply.code(429).send({ error: 'daily_cap_reached', message: `Maximum ${dailyCap} comments per day` });
@@ -458,8 +458,7 @@ export function registerEngageRoutes(
 
     const pageCommentToday = await prisma.engageComment.count({
       where: {
-        createdAt: { gte: todayStart },
-        status: { not: 'rejected' },
+        ...postedTodayWhere(todayStart),
         engagePost: { engagePageId: post.engagePageId },
       },
     });
@@ -524,11 +523,10 @@ export function registerEngageRoutes(
   // -----------------------------------------------------------------------
 
   app.get('/engage/stats', async () => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfToday();
 
     const [todayComments, pendingCount, postedCount, totalPages] = await Promise.all([
-      prisma.engageComment.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.engageComment.count({ where: postedTodayWhere(todayStart) }),
       prisma.engageComment.count({ where: { status: 'pending_review' } }),
       prisma.engageComment.count({ where: { status: 'posted' } }),
       prisma.engagePage.count({ where: { enabled: true } }),
