@@ -123,8 +123,7 @@ export default function EngagePage() {
 
   return (
     <div>
-      <h1 className="pageTitle">Engage</h1>
-      <p className="subtle" style={{ marginBottom: 16 }}>
+      <p className="subtle desktopOnly" style={{ marginBottom: 12, marginTop: -4 }}>
         Community comments on fishing Facebook pages
       </p>
 

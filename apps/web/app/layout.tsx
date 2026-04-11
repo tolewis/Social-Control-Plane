@@ -2,7 +2,6 @@ import './globals.css';
 import type { ReactNode } from 'react';
 import { AppNav } from './_components/AppNav';
 import { TopBar } from './_components/TopBar';
-import { MobileFab } from './_components/MobileFab';
 
 export const metadata = {
   title: 'Social Plane',
@@ -41,8 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main className="page" aria-label="Content">
               {children}
             </main>
-            <MobileFab />
-            <AppNav variant="mobile" />
+            {/* Mobile nav is now a hamburger dropdown in TopBar */}
           </div>
         </div>
       </body>
