@@ -268,24 +268,28 @@ function DayView({
                     <div className="dayNowDot" />
                   </div>
                 )}
-                {hourItems
-                  .sort((a, b) => a.date.getMinutes() - b.date.getMinutes())
-                  .map((item) => (
-                  <a
-                    href={`/queue?expand=${item.id}`}
-                    key={item.id}
-                    className="dayEvent"
-                    style={{ borderLeftColor: statusColor(item.status), position: 'relative', top: 'auto', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
-                  >
-                    <div className="dayEventHeader">
-                      <ProviderIcon provider={item.provider} size={16} />
-                      <span className="dayEventName">{item.displayName}</span>
-                      <span className="dayEventTime">{item.date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                      <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
-                    </div>
-                    <div className="dayEventContent">{item.content.slice(0, 100)}{item.content.length > 100 ? '…' : ''}</div>
-                  </a>
-                ))}
+                {(() => {
+                  const sorted = hourItems.sort((a, b) => a.date.getMinutes() - b.date.getMinutes());
+                  const hasOverlap = sorted.length > 1;
+                  return sorted.map((item) => (
+                    <a
+                      href={`/queue?expand=${item.id}`}
+                      key={item.id}
+                      className={`dayEvent${hasOverlap ? ' compact' : ''}`}
+                      style={{ borderLeftColor: statusColor(item.status), position: 'relative', top: 'auto', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
+                    >
+                      <div className="dayEventHeader">
+                        <ProviderIcon provider={item.provider} size={16} />
+                        <span className="dayEventName">{item.displayName}</span>
+                        <span className="dayEventTime">{item.date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
+                      </div>
+                      {!hasOverlap && (
+                        <div className="dayEventContent">{item.content.slice(0, 100)}{item.content.length > 100 ? '…' : ''}</div>
+                      )}
+                    </a>
+                  ));
+                })()}
               </div>
             </div>
           );
@@ -356,24 +360,33 @@ function TimelineView({
             .filter((item) => item.date.getHours() >= WORK_START && item.date.getHours() < WORK_END)
             .sort((a, b) => a.date.getTime() - b.date.getTime());
           // Track occupied slots to offset overlapping events
-          const placed: Array<{ topPct: number; count: number }> = [];
-          return filtered.map((item) => {
+          const placed: Array<{ topPct: number; count: number; ids: string[] }> = [];
+          // First pass: assign slots
+          const slotMap = new Map<string, { slot: { topPct: number; count: number; ids: string[] }; index: number }>();
+          for (const item of filtered) {
             const minutes = item.date.getHours() * 60 + item.date.getMinutes() - WORK_START * 60;
             const topPct = (minutes / totalMinutes) * 100;
-            // Check if this overlaps with a previously placed event (within 4% = ~38 min)
             let slot = placed.find(p => Math.abs(p.topPct - topPct) < 4);
             if (slot) {
               slot.count++;
+              slot.ids.push(item.id);
             } else {
-              slot = { topPct, count: 0 };
+              slot = { topPct, count: 0, ids: [item.id] };
               placed.push(slot);
             }
-            const offsetPx = slot.count * 68; // stack each overlap 68px lower
+            slotMap.set(item.id, { slot, index: slot.count });
+          }
+          return filtered.map((item) => {
+            const minutes = item.date.getHours() * 60 + item.date.getMinutes() - WORK_START * 60;
+            const topPct = (minutes / totalMinutes) * 100;
+            const info = slotMap.get(item.id)!;
+            const isOverlapping = info.slot.ids.length > 1;
+            const offsetPx = info.index * 40;
             return (
               <a
                 href={`/queue?expand=${item.id}`}
                 key={item.id}
-                className="timelineEvent"
+                className={`timelineEvent${isOverlapping ? ' compact' : ''}`}
                 style={{ top: `calc(${topPct}% + ${offsetPx}px)`, borderLeftColor: statusColor(item.status), textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
               >
                 <div className="timelineEventHeader">
@@ -384,9 +397,11 @@ function TimelineView({
                   </span>
                   <StatusPill tone={pillTone(item.status)}>{item.status}</StatusPill>
                 </div>
-                <div className="timelineEventContent">
-                  {item.content.slice(0, 120)}{item.content.length > 120 ? '…' : ''}
-                </div>
+                {!isOverlapping && (
+                  <div className="timelineEventContent">
+                    {item.content.slice(0, 120)}{item.content.length > 120 ? '…' : ''}
+                  </div>
+                )}
               </a>
             );
           });
@@ -455,7 +470,7 @@ export default function CalendarPage() {
       });
     }
     return items;
-  }, [drafts, connections, jobs]);
+  }, [drafts, connections, jobs, channelFilter]);
 
   const itemsByDate = useMemo(() => {
     const map = new Map<string, CalendarItem[]>();

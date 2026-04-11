@@ -66,48 +66,33 @@ export default function DashboardPage() {
   /* -- Per-channel stats ------------------------------------------ */
   const channels = useMemo(() => {
     const now = Date.now();
-    const weekAgo = now - 7 * 86400000;
+    // Week window: Monday 00:00 to Sunday 23:59
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=Sun
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset).getTime();
+    const weekEnd = weekStart + 7 * 86400000;
+
     return connections.filter(c => c.status === 'connected').map(conn => {
-      const pub = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'SUCCEEDED' && new Date(j.updatedAt).getTime() >= weekAgo).length;
-      // Queued = only status 'queued' (actually in publish pipeline), not 'draft' (awaiting review)
+      // Published this week
+      const pub = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'SUCCEEDED' && new Date(j.updatedAt).getTime() >= weekStart && new Date(j.updatedAt).getTime() < weekEnd).length;
+      // Queued this week (scheduled within this calendar week)
+      const queuedThisWeek = drafts.filter(d => d.connectionId === conn.id && d.status === 'queued' && d.scheduledFor && new Date(d.scheduledFor).getTime() >= weekStart && new Date(d.scheduledFor).getTime() < weekEnd).length;
+      // Total queued (all future)
       const queued = drafts.filter(d => d.connectionId === conn.id && d.status === 'queued').length;
       const pendingDrafts = drafts.filter(d => d.connectionId === conn.id && d.status === 'draft').length;
-      const failed = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'FAILED' && new Date(j.updatedAt).getTime() >= weekAgo).length;
-      // Next = only future scheduled posts
+      const failed = jobs.filter(j => j.connectionId === conn.id && j.status.toUpperCase() === 'FAILED' && new Date(j.updatedAt).getTime() >= weekStart && new Date(j.updatedAt).getTime() < weekEnd).length;
+      // Next scheduled post
       const next = drafts
         .filter(d => d.connectionId === conn.id && d.scheduledFor && d.status === 'queued' && new Date(d.scheduledFor).getTime() > now)
         .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime())[0]?.scheduledFor ?? null;
-      const health = cadenceHealth(pub, conn.provider);
+      // Cadence health: published + queued-this-week combined
+      const totalThisWeek = pub + queuedThisWeek;
+      const health = cadenceHealth(totalThisWeek, conn.provider);
       const cadence = CADENCE[conn.provider] ?? null;
-      return { id: conn.id, provider: conn.provider, name: conn.displayName ?? conn.provider, pub, queued, pendingDrafts, failed, next, health, cadence };
+      return { id: conn.id, provider: conn.provider, name: conn.displayName ?? conn.provider, thisWeek: totalThisWeek, pub, queued, pendingDrafts, failed, next, health, cadence };
     });
   }, [connections, drafts, jobs]);
-
-  /* -- Today timeline --------------------------------------------- */
-  const todayItems = useMemo(() => {
-    const now = new Date();
-    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const t1 = t0 + 86400000;
-    const items: Array<{ id: string; time: string; provider: string; content: string; status: string; tone: 'ok'|'err'|'info'|'neutral' }> = [];
-
-    for (const d of drafts) {
-      if (d.status !== 'queued') continue;
-      const ts = d.scheduledFor ? new Date(d.scheduledFor).getTime() : 0;
-      if (ts < t0 || ts >= t1) continue;
-      const conn = connections.find(c => c.id === d.connectionId);
-      items.push({ id: d.id, time: fmtTime(d.scheduledFor!), provider: conn?.provider ?? '?', content: d.content.slice(0, 50), status: 'scheduled', tone: 'info' });
-    }
-    for (const j of jobs) {
-      const ts = new Date(j.updatedAt).getTime();
-      if (ts < t0 || ts >= t1) continue;
-      if (j.status !== 'succeeded' && j.status !== 'failed') continue;
-      const draft = drafts.find(d => d.id === j.draftId);
-      const conn = connections.find(c => c.id === j.connectionId);
-      items.push({ id: j.id, time: fmtTime(j.updatedAt), provider: conn?.provider ?? '?', content: draft?.content.slice(0, 50) ?? '', status: j.status.toUpperCase() === 'SUCCEEDED' ? 'published' : 'failed', tone: j.status.toUpperCase() === 'SUCCEEDED' ? 'ok' : 'err' });
-    }
-    const seen = new Set<string>();
-    return items.sort((a, b) => a.time.localeCompare(b.time)).filter(i => { if (seen.has(i.id)) return false; seen.add(i.id); return true; }).slice(0, 8);
-  }, [drafts, jobs, connections]);
 
   /* -- Render ----------------------------------------------------- */
   if (loading) return <section><p className="subtle">Loading...</p></section>;
@@ -128,7 +113,7 @@ export default function DashboardPage() {
   return (
     <section>
       {/* ---- Top row: counters ---- */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+      <div className="dashCounters">
         <Link href="/review" className="dashCounter" style={{ '--counter-color': pendingReview > 0 ? 'var(--warn)' : 'var(--ok)' } as React.CSSProperties}>
           <span className="dashCounterNum">{pendingReview}</span>
           <span className="dashCounterLabel">to review</span>
@@ -156,22 +141,22 @@ export default function DashboardPage() {
       </div>
 
       {/* ---- Two-column layout: channels left, today right ---- */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignItems: 'start' }}>
+      <div className="dashGrid">
 
         {/* Left: Channel table */}
         <div>
           <h2 className="sectionTitle" style={{ fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Channels</h2>
           <div className="tableWrap" style={{ fontSize: 13 }}>
-            <table className="table" style={{ width: '100%' }}>
+            <table className="table" style={{ width: '100%', minWidth: 380 }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>Account</th>
-                  <th style={{ textAlign: 'right' }}>This week</th>
+                  <th style={{ textAlign: 'right' }}>Week</th>
                   <th style={{ textAlign: 'right' }}>Target</th>
                   <th style={{ textAlign: 'center' }}>Pace</th>
                   <th style={{ textAlign: 'right' }}>Queued</th>
-                  <th style={{ textAlign: 'right' }}>Drafts</th>
-                  <th style={{ textAlign: 'left' }}>Next</th>
+                  <th className="dashHideMobile" style={{ textAlign: 'right' }}>Drafts</th>
+                  <th className="dashHideMobile" style={{ textAlign: 'left' }}>Next</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,7 +168,7 @@ export default function DashboardPage() {
                         <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{ch.name}</span>
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{ch.pub}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{ch.thisWeek}</td>
                     <td style={{ textAlign: 'right', color: 'var(--muted)' }}>
                       {ch.cadence ? `${ch.cadence.minPerWeek}-${ch.cadence.maxPerWeek}` : '--'}
                     </td>
@@ -194,10 +179,10 @@ export default function DashboardPage() {
                       {ch.queued}
                       {ch.failed > 0 && <span style={{ color: 'var(--err)', marginLeft: 4 }}>({ch.failed} err)</span>}
                     </td>
-                    <td style={{ textAlign: 'right', color: ch.pendingDrafts > 0 ? 'var(--warn)' : 'var(--muted)' }}>
+                    <td className="dashHideMobile" style={{ textAlign: 'right', color: ch.pendingDrafts > 0 ? 'var(--warn)' : 'var(--muted)' }}>
                       {ch.pendingDrafts}
                     </td>
-                    <td style={{ color: ch.next ? 'var(--text)' : 'var(--muted)', fontSize: 12 }}>
+                    <td className="dashHideMobile" style={{ color: ch.next ? 'var(--text)' : 'var(--muted)', fontSize: 12 }}>
                       {ch.next ? fmtRelative(ch.next) : 'None'}
                     </td>
                   </tr>
@@ -222,61 +207,59 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right: Today + upcoming */}
+        {/* Right: Upcoming feed with inline date dividers */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h2 className="sectionTitle" style={{ fontSize: 12, margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today</h2>
+            <h2 className="sectionTitle" style={{ fontSize: 12, margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upcoming</h2>
             <Link href="/calendar" style={{ fontSize: 11, color: 'var(--muted)', textDecoration: 'none' }}>Calendar &rarr;</Link>
           </div>
 
-          {todayItems.length === 0 ? (
-            <p className="subtle" style={{ fontSize: 12 }}>Nothing today.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {todayItems.map(item => (
-                <div key={item.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 8px', borderRadius: 5, fontSize: 12,
-                  background: 'var(--panel)',
-                }}>
-                  <span className="mono" style={{ color: 'var(--muted)', minWidth: 44, fontSize: 11 }}>{item.time}</span>
-                  <ProviderIcon provider={item.provider} size={14} />
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.content || '(empty)'}</span>
-                  <StatusPill tone={item.tone}>{item.status}</StatusPill>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Upcoming across all channels */}
           {(() => {
             const now = Date.now();
             const upcoming = drafts
               .filter(d => d.scheduledFor && d.status === 'queued' && new Date(d.scheduledFor).getTime() > now)
               .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime())
-              .slice(0, 6);
-            if (upcoming.length === 0) return null;
-            return (
-              <div style={{ marginTop: 16 }}>
-                <h2 className="sectionTitle" style={{ fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upcoming</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {upcoming.map(d => {
-                    const conn = connections.find(c => c.id === d.connectionId);
-                    return (
-                      <div key={d.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '5px 8px', borderRadius: 5, fontSize: 12,
-                        background: 'var(--panel)',
-                      }}>
-                        <span className="mono" style={{ color: 'var(--muted)', minWidth: 70, fontSize: 11 }}>{fmtRelative(d.scheduledFor!)}</span>
-                        <ProviderIcon provider={conn?.provider ?? '?'} size={14} />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.content.slice(0, 40)}</span>
-                      </div>
-                    );
-                  })}
+              .slice(0, 10);
+            if (upcoming.length === 0) return <p className="subtle" style={{ fontSize: 12 }}>Nothing scheduled.</p>;
+
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const elements: React.ReactNode[] = [];
+            let lastDateLabel = '';
+
+            for (const d of upcoming) {
+              const scheduled = new Date(d.scheduledFor!);
+              const schedStart = new Date(scheduled);
+              schedStart.setHours(0, 0, 0, 0);
+              const dayDiff = Math.round((schedStart.getTime() - todayStart.getTime()) / 86400000);
+              let dateLabel: string;
+              if (dayDiff === 0) dateLabel = 'Today';
+              else if (dayDiff === 1) dateLabel = 'Tomorrow';
+              else dateLabel = scheduled.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+              if (dateLabel !== lastDateLabel) {
+                elements.push(
+                  <div key={`div-${dateLabel}`} style={{ fontSize: 11, fontWeight: 650, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: elements.length > 0 ? 10 : 0, marginBottom: 2 }}>
+                    {dateLabel}
+                  </div>
+                );
+                lastDateLabel = dateLabel;
+              }
+
+              const conn = connections.find(c => c.id === d.connectionId);
+              elements.push(
+                <div key={d.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 8px', borderRadius: 5, fontSize: 12,
+                  background: 'var(--panel)',
+                }}>
+                  <span className="mono" style={{ color: 'var(--muted)', minWidth: 44, fontSize: 11 }}>{fmtTime(d.scheduledFor!)}</span>
+                  <ProviderIcon provider={conn?.provider ?? '?'} size={14} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.content.slice(0, 50)}</span>
                 </div>
-              </div>
-            );
+              );
+            }
+            return <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{elements}</div>;
           })()}
         </div>
       </div>
