@@ -60,7 +60,7 @@ async function main(): Promise<void> {
         throw new Error(`Unknown job name: ${job.name}`);
       }
 
-      // Studio jobs don't require account-level locks
+      // Studio and engage jobs don't require account-level locks
       if (job.name === 'studio.render-batch') {
         return await handlers['studio.render-batch'](
           job as Job<JobNameToData['studio.render-batch'], unknown, 'studio.render-batch'>,
@@ -69,6 +69,11 @@ async function main(): Promise<void> {
       if (job.name === 'studio.cleanup') {
         return await handlers['studio.cleanup'](
           job as Job<JobNameToData['studio.cleanup'], unknown, 'studio.cleanup'>,
+        );
+      }
+      if (job.name === 'engage.comment') {
+        return await handlers['engage.comment'](
+          job as Job<JobNameToData['engage.comment'], unknown, 'engage.comment'>,
         );
       }
 
