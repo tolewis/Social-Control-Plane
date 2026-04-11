@@ -59,11 +59,12 @@ Do **not** build a Postiz clone monolith. Build a narrower, tougher product arou
 ## Architecture
 - `apps/web` — Next.js 16 responsive operator UI (standalone production build)
 - `apps/api` — Fastify API with HMAC auth, OAuth flows, encrypted credential storage
-- `apps/worker` — BullMQ publish worker with token refresh
+- `apps/worker` — BullMQ publish worker with token refresh and background job handlers
 - `packages/shared` — shared types/contracts
 - `packages/providers` — provider auth adapters (X, LinkedIn, Facebook, Instagram) with credential injection
-- `packages/visual-engine` — structured-data infographic renderer + template system
-- `prisma/schema.prisma` — Postgres data model (Operator, ApiKey, Connection, Draft, PublishJob, Media, ProviderConfig)
+- `packages/renderer` — StrikeFrame-based image renderer, primitives, and ad template scripts
+- `packages/visual-engine` — earlier visual generation package still kept in repo during renderer transition
+- `prisma/schema.prisma` — Postgres data model (Operator, ApiKey, Connection, Draft, PublishJob, Media, ProviderConfig, Engage*)
 - `docker-compose.dev.yml` — Postgres + Redis for local dev
 
 ## Production deployment
@@ -73,12 +74,14 @@ Reverse-proxied through Nginx Proxy Manager with Let's Encrypt cert.
 ## Visual engine docs
 - Generic reusable skill: `packages/visual-engine/SKILL.md`
 - Tackle Room prompting guide: `packages/visual-engine/PROMPTING-GUIDE.md`
+- Renderer template playbook: `packages/renderer/templates/PLAYBOOK.md`
+- Per-template notes: `packages/renderer/templates/*/README.md`
 
-If you are integrating visual generation into another agent or app, start with `packages/visual-engine/SKILL.md`.
+If you are integrating visual generation into another agent or app, start with `packages/visual-engine/SKILL.md` for the older engine and `packages/renderer/templates/PLAYBOOK.md` for the newer template-driven renderer.
 
-## What's built (as of 2026-03-21)
+## What's built
 - Auth gate (HMAC bearer tokens, login page, middleware)
-- OAuth flows for all 4 providers (auth URL generation, callback handling, token storage)
+- OAuth flows for X, LinkedIn, Facebook, and Instagram
 - Encrypted credential storage via Settings UI (AES-256-GCM, per-provider)
 - Integration onboarding redesign: 3-state provider cards (unconfigured → configured → connected)
 - Connections page: status-aware with deep links to setup
@@ -89,6 +92,28 @@ If you are integrating visual generation into another agent or app, start with `
 - Operator and API key management
 - Full mobile-responsive layout
 - Help/docs tab with per-provider setup guides and API reference
+- Facebook community engagement system for page commenting:
+  - target page registry
+  - discovered post store
+  - comment draft / approve / reject flow
+  - auto-post endpoint with daily and per-page caps
+  - worker-backed posting jobs
+  - Playwright-based post discovery scripts and page ID resolution tooling
+- Renderer template library for ad/image generation:
+  - `lmnt-product`
+  - `contrarian-hook`
+  - `benefit-grid`
+  - `comparison-chart`
+  - `testimonial`
+
+## Engage config
+Community commenting caps are env-driven:
+- `ENGAGE_DAILY_CAP`
+- `ENGAGE_PER_PAGE_CAP`
+
+Main API surface lives in `apps/api/src/engage.ts`.
+Worker posting logic lives in `apps/worker/src/workerJobs/handlers/handleEngageComment.ts`.
+Discovery tooling lives in `scripts/engage-scraper.py` and related scripts.
 
 ## What's left for 1.0
 - Enter real X credentials via Settings UI and complete OAuth connect
