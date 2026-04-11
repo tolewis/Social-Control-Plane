@@ -74,10 +74,11 @@ Implemented in `apps/worker/src/workerJobs/handlers/handleEngageComment.ts`.
 The worker:
 1. loads the connected Facebook Page token
 2. decrypts the token from stored credentials
-3. posts to `POST /{fbPostId}/comments` on Graph API
-4. stores the provider receipt
-5. marks the parent post as `commented=true`
-6. marks connection `reconnect_required` if Facebook returns token error `190`
+3. rejects synthetic `_text_` placeholder targets before calling Graph API
+4. posts to `POST /{fbPostId}/comments` on Graph API for real post ids
+5. stores the provider receipt on success and on failure when available
+6. marks the parent post as `commented=true`
+7. marks connection `reconnect_required` if Facebook returns token error `190`
 
 ## Discovery tooling
 Current discovery helpers live in `scripts/`.
@@ -115,10 +116,14 @@ For production use, prefer this order:
 - The connected Page token lives in `SocialConnection`, not in scripts.
 - Posting should happen through SCP worker jobs, not direct one-off Graph calls, when you want auditability.
 - `commented=true` on a post is the main dedupe signal for avoiding repeat comments on the same stored post.
+- Discovery can still create synthetic `_text_` placeholder ids when the scraper only finds page-root text. Those records are useful for review, but they are not directly commentable.
+- Approval and auto-post now block synthetic placeholder targets. Re-scrape the page until SCP has a real direct post id before approving.
+- When a later scrape finds a direct post id for the same page and text, SCP promotes the older placeholder record in place so existing draft links stay usable.
 - Comment quality policy lives outside SCP code. SCP handles workflow, caps, queueing, and receipts.
 
 ## Known gaps
 - Discovery quality still depends on the scraper and the source pages.
+- Some real Facebook posts can still reject comments because of permissions or page-specific restrictions even when SCP has a direct post id.
 - Engagement scoring is still light. Human review remains important.
 - Operator docs for exact page-selection heuristics should live alongside agent runbooks, not only in SCP.
 

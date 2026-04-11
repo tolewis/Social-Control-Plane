@@ -12,6 +12,24 @@ import type { EngageCommentJobData } from '../types.js';
 // The comment is posted via POST /{fbPostId}/comments on the Graph API.
 // ---------------------------------------------------------------------------
 
+function isSyntheticFbPostId(fbPostId: string): boolean {
+  return /_text_[0-9a-f]{12}$/i.test(fbPostId);
+}
+
+function describeApiFailure(status: number, body: unknown): string {
+  const error = body && typeof body === 'object'
+    ? (body as { error?: { code?: number; error_subcode?: number; message?: string } }).error
+    : undefined;
+
+  const parts = [`api_error:${status}`];
+  if (error?.code !== undefined) parts.push(`code=${error.code}`);
+  if (error?.error_subcode !== undefined) parts.push(`subcode=${error.error_subcode}`);
+  if (error?.message) parts.push(error.message);
+
+  const message = parts.join(' | ');
+  return message.length > 500 ? `${message.slice(0, 497)}...` : message;
+}
+
 export async function handleEngageComment(
   job: Job<EngageCommentJobData, unknown, 'engage.comment'>,
   ctx: { log: Logger; queue: Queue; db: DbClient },
@@ -21,11 +39,20 @@ export async function handleEngageComment(
 
   log.info('engage.comment.start', { jobId: job.id, commentId, fbPostId });
 
+  if (isSyntheticFbPostId(fbPostId)) {
+    log.error('engage.comment.invalid_target', { commentId, fbPostId, reason: 'synthetic_fb_post_id' });
+    await markCommentFailed(db, commentId, 'non_commentable_target: synthetic_fb_post_id', {
+      fbPostId,
+      reason: 'synthetic_fb_post_id',
+    });
+    return { ok: true };
+  }
+
   // 1. Load connection and decrypt token
   const connection = await db.socialConnection.findUnique({ where: { id: connectionId } });
   if (!connection) {
     log.error('engage.comment.connection_not_found', { commentId, connectionId });
-    await markCommentFailed(db, commentId, 'connection_not_found');
+    await markCommentFailed(db, commentId, 'connection_not_found', { connectionId });
     return { ok: true };
   }
 
@@ -33,11 +60,12 @@ export async function handleEngageComment(
   try {
     accessToken = decrypt(connection.encryptedToken);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     log.error('engage.comment.token_decrypt_failed', {
       commentId,
-      err: err instanceof Error ? err.message : String(err),
+      err: msg,
     });
-    await markCommentFailed(db, commentId, 'token_decrypt_failed');
+    await markCommentFailed(db, commentId, `token_decrypt_failed: ${msg}`, { connectionId });
     return { ok: true };
   }
 
@@ -62,7 +90,7 @@ export async function handleEngageComment(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error('engage.comment.network_error', { commentId, err: msg });
-    await markCommentFailed(db, commentId, `network_error: ${msg}`);
+    await markCommentFailed(db, commentId, `network_error: ${msg}`, { fbPostId, connectionId });
     return { ok: true };
   }
 
@@ -109,7 +137,7 @@ export async function handleEngageComment(
       status: result.status,
       body: result.body,
     });
-    await markCommentFailed(db, commentId, `api_error:${result.status}`);
+    await markCommentFailed(db, commentId, describeApiFailure(result.status, result.body), result.body);
 
     // Check for token invalidation
     const error = result.body && typeof result.body === 'object'
@@ -128,19 +156,24 @@ export async function handleEngageComment(
   return { ok: true };
 }
 
-async function markCommentFailed(db: DbClient, commentId: string, reason: string): Promise<void> {
+async function markCommentFailed(
+  db: DbClient,
+  commentId: string,
+  reason: string,
+  receiptJson?: unknown,
+): Promise<void> {
   try {
     await Promise.all([
       db.engageComment.update({
         where: { id: commentId },
-        data: { status: 'failed', rejectionNote: reason, updatedAt: new Date() },
+        data: { status: 'failed', rejectionNote: reason, receiptJson: receiptJson ?? undefined, updatedAt: new Date() },
       }),
       db.auditEvent.create({
         data: {
           entityType: 'EngageComment',
           entityId: commentId,
           action: 'failed',
-          payload: { reason },
+          payload: { reason, receiptJson: receiptJson ?? undefined },
         },
       }),
     ]);

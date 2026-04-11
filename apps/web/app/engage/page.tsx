@@ -51,6 +51,15 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+function targetIssueLabel(reason?: string | null): string {
+  switch (reason) {
+    case 'synthetic_fb_post_id':
+      return 'needs direct post URL';
+    default:
+      return 'target needs refresh';
+  }
+}
+
 type TabView = 'comments' | 'posts';
 
 export default function EngagePage() {
@@ -325,6 +334,7 @@ function CommentRow({
   const postText = c.engagePost?.postText ?? '';
   const isPending = c.status === 'pending_review';
   const isLoading = actionLoading === c.id;
+  const targetReady = c.engagePost?.targetStatus?.isCommentable !== false;
 
   return (
     <>
@@ -342,7 +352,7 @@ function CommentRow({
         <td>
           {isPending && (
             <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn sm" disabled={isLoading} onClick={e => { e.stopPropagation(); onApprove(c.id); }}>
+              <button className="btn sm" disabled={isLoading || !targetReady} onClick={e => { e.stopPropagation(); onApprove(c.id); }}>
                 {isLoading ? '...' : 'Approve'}
               </button>
               <button className="btn sm ghost" disabled={isLoading} onClick={e => { e.stopPropagation(); setRejectingId(c.id); onToggle(); }}>
@@ -435,6 +445,8 @@ function ExpandedContent({
   const postText = c.engagePost?.postText ?? '';
   const postUrl = c.engagePost?.postUrl;
   const pageName = c.engagePost?.engagePage?.name ?? '';
+  const targetStatus = c.engagePost?.targetStatus;
+  const targetReady = targetStatus?.isCommentable !== false;
 
   return (
     <div>
@@ -489,6 +501,12 @@ function ExpandedContent({
         </div>
       </div>
 
+      {targetStatus && !targetReady && (
+        <div style={{ marginTop: 8, fontSize: '0.82rem', color: 'var(--warn)' }}>
+          Target issue: {targetIssueLabel(targetStatus.reason)}
+        </div>
+      )}
+
       {/* Rejection note */}
       {c.rejectionNote && (
         <div style={{ marginTop: 8, fontSize: '0.82rem', color: 'var(--err)' }}>
@@ -506,10 +524,10 @@ function ExpandedContent({
       {/* Actions */}
       {isPending && editingId !== c.id && (
         <div className="engageActions">
-          <button className="btn sm" disabled={isLoading} onClick={() => onApprove(c.id)}>
+          <button className="btn sm" disabled={isLoading || !targetReady} onClick={() => onApprove(c.id)}>
             {isLoading ? '...' : 'Approve'}
           </button>
-          <button className="btn sm ghost" onClick={() => onStartEdit(c)}>
+          <button className="btn sm ghost" disabled={!targetReady} onClick={() => onStartEdit(c)}>
             Edit & Approve
           </button>
           {rejectingId === c.id ? (
@@ -543,6 +561,7 @@ function ExpandedContent({
 function PostCard({ post }: { post: EngagePostRecord }) {
   const pageName = post.engagePage?.name ?? '—';
   const category = post.engagePage?.category ?? '';
+  const targetReady = post.targetStatus?.isCommentable !== false;
 
   return (
     <div className="engageCard" style={{ cursor: 'default' }}>
@@ -551,8 +570,10 @@ function PostCard({ post }: { post: EngagePostRecord }) {
         {category && <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{category}</span>}
         {post.commented ? (
           <StatusPill tone="ok">commented</StatusPill>
-        ) : (
+        ) : targetReady ? (
           <StatusPill tone="neutral">available</StatusPill>
+        ) : (
+          <StatusPill tone="warn">needs refresh</StatusPill>
         )}
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--muted)' }}>
           {timeAgo(post.discoveredAt)}
@@ -561,6 +582,11 @@ function PostCard({ post }: { post: EngagePostRecord }) {
       <div style={{ fontSize: '0.88rem', lineHeight: 1.5, marginTop: 4 }}>
         {post.postText || <span className="subtle">No text captured</span>}
       </div>
+      {!targetReady && (
+        <div style={{ marginTop: 6, fontSize: '0.78rem', color: 'var(--warn)' }}>
+          {targetIssueLabel(post.targetStatus?.reason)}
+        </div>
+      )}
       {post.postUrl && (
         <a
           href={post.postUrl}

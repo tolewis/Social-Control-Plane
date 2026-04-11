@@ -30,6 +30,29 @@ export function registerEngageRoutes(
   publishQueue: Queue,
 ): void {
 
+  function getTargetStatus(target: { fbPostId: string; postUrl?: string | null }) {
+    if (/_text_[0-9a-f]{12}$/i.test(target.fbPostId)) {
+      return {
+        isCommentable: false,
+        reason: 'synthetic_fb_post_id',
+        message: 'Discovered target is a page-root placeholder, not a direct Facebook post.',
+      } as const;
+    }
+
+    return {
+      isCommentable: true,
+      reason: null,
+      message: null,
+    } as const;
+  }
+
+  function withTargetStatus<T extends { fbPostId: string; postUrl?: string | null }>(target: T) {
+    return {
+      ...target,
+      targetStatus: getTargetStatus(target),
+    };
+  }
+
   // Helper: audit event
   async function audit(entityType: string, entityId: string, action: string, payload?: unknown) {
     await prisma.auditEvent.create({
@@ -96,6 +119,47 @@ export function registerEngageRoutes(
       shareCount: z.number().int().optional(),
     }).parse(request.body);
 
+    const targetStatus = getTargetStatus({ fbPostId: body.fbPostId, postUrl: body.postUrl });
+    const existingDirectPost = await prisma.engagePost.findUnique({ where: { fbPostId: body.fbPostId } });
+
+    if (!existingDirectPost && targetStatus.isCommentable && body.postText) {
+      const placeholderPost = await prisma.engagePost.findFirst({
+        where: {
+          engagePageId: body.engagePageId,
+          postText: body.postText,
+          fbPostId: { contains: '_text_' },
+        },
+        orderBy: { discoveredAt: 'desc' },
+      });
+
+      if (placeholderPost) {
+        const promotedPost = await prisma.engagePost.update({
+          where: { id: placeholderPost.id },
+          data: {
+            fbPostId: body.fbPostId,
+            postUrl: body.postUrl,
+            postText: body.postText,
+            authorName: body.authorName,
+            postedAt: body.postedAt ? new Date(body.postedAt) : undefined,
+            likeCount: body.likeCount,
+            commentCount: body.commentCount,
+            shareCount: body.shareCount,
+          },
+        });
+
+        await audit('EngagePost', promotedPost.id, 'promoted_direct_post', {
+          previousFbPostId: placeholderPost.fbPostId,
+          fbPostId: body.fbPostId,
+          postUrl: body.postUrl,
+        });
+
+        return reply.code(201).send({
+          post: withTargetStatus(promotedPost),
+          promotedFromPlaceholder: placeholderPost.fbPostId,
+        });
+      }
+    }
+
     // Upsert — same post might be submitted twice
     const post = await prisma.engagePost.upsert({
       where: { fbPostId: body.fbPostId },
@@ -111,14 +175,17 @@ export function registerEngageRoutes(
         shareCount: body.shareCount,
       },
       update: {
+        postUrl: body.postUrl,
         postText: body.postText,
+        authorName: body.authorName,
+        postedAt: body.postedAt ? new Date(body.postedAt) : undefined,
         likeCount: body.likeCount,
         commentCount: body.commentCount,
         shareCount: body.shareCount,
       },
     });
 
-    return reply.code(201).send({ post });
+    return reply.code(201).send({ post: withTargetStatus(post) });
   });
 
   app.get('/engage/posts', async (request) => {
@@ -138,7 +205,7 @@ export function registerEngageRoutes(
       take: Math.min(Number(limit) || 50, 100),
       include: { engagePage: { select: { name: true, category: true } } },
     });
-    return { posts };
+    return { posts: posts.map((post) => withTargetStatus(post)) };
   });
 
   // -----------------------------------------------------------------------
@@ -232,7 +299,12 @@ export function registerEngageRoutes(
         },
       },
     });
-    return { comments };
+    return {
+      comments: comments.map((comment) => ({
+        ...comment,
+        engagePost: comment.engagePost ? withTargetStatus(comment.engagePost) : comment.engagePost,
+      })),
+    };
   });
 
   // -----------------------------------------------------------------------
@@ -256,6 +328,15 @@ export function registerEngageRoutes(
     }
 
     const finalText = body.editedText || comment.commentText;
+    const targetStatus = getTargetStatus(comment.engagePost);
+
+    if (!targetStatus.isCommentable) {
+      return reply.code(409).send({
+        error: 'comment_target_not_commentable',
+        reason: targetStatus.reason,
+        message: targetStatus.message,
+      });
+    }
 
     // Update status
     await prisma.engageComment.update({
@@ -362,9 +443,18 @@ export function registerEngageRoutes(
 
     const post = await prisma.engagePost.findUnique({
       where: { id: body.engagePostId },
-      select: { engagePageId: true, fbPostId: true },
+      select: { engagePageId: true, fbPostId: true, postUrl: true },
     });
     if (!post) return reply.code(404).send({ error: 'post_not_found' });
+
+    const targetStatus = getTargetStatus(post);
+    if (!targetStatus.isCommentable) {
+      return reply.code(409).send({
+        error: 'comment_target_not_commentable',
+        reason: targetStatus.reason,
+        message: targetStatus.message,
+      });
+    }
 
     const pageCommentToday = await prisma.engageComment.count({
       where: {

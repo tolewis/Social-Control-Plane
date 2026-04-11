@@ -660,6 +660,12 @@ export function publishBulk(draftIds: string[]): Promise<{
 /*  Engage — community commenting                                      */
 /* ------------------------------------------------------------------ */
 
+export type EngageTargetStatus = {
+  isCommentable: boolean;
+  reason: string | null;
+  message: string | null;
+};
+
 export type EngageCommentRecord = {
   id: string;
   engagePostId: string;
@@ -678,6 +684,7 @@ export type EngageCommentRecord = {
     fbPostId: string;
     postUrl: string | null;
     postText: string | null;
+    targetStatus?: EngageTargetStatus;
     engagePage?: { name: string };
   };
 };
@@ -702,6 +709,7 @@ export type EngagePostRecord = {
   commentCount: number | null;
   discoveredAt: string;
   commented: boolean;
+  targetStatus?: EngageTargetStatus;
   engagePage?: { name: string; category: string };
 };
 
