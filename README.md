@@ -79,6 +79,11 @@ Reverse-proxied through Nginx Proxy Manager with Let's Encrypt cert.
 
 If you are integrating visual generation into another agent or app, start with `packages/visual-engine/SKILL.md` for the older engine and `packages/renderer/templates/PLAYBOOK.md` for the newer template-driven renderer.
 
+## Engage docs
+- Operator workflow: `docs/Engage.md`
+- API + route logic: `apps/api/src/engage.ts`
+- Worker posting logic: `apps/worker/src/workerJobs/handlers/handleEngageComment.ts`
+
 ## What's built
 - Auth gate (HMAC bearer tokens, login page, middleware)
 - OAuth flows for X, LinkedIn, Facebook, and Instagram
