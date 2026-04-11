@@ -91,7 +91,7 @@ export function ReviewConsole() {
     const cache = new Map<string, SlopResult>();
     for (const d of reviewDrafts) {
       if (!cache.has(d.content)) {
-        cache.set(d.content, getSlop(d.content));
+        cache.set(d.content, detectSlop(d.content));
       }
     }
     return cache;

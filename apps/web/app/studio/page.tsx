@@ -292,10 +292,10 @@ export default function StudioPage() {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 24, padding: '0 8px', minHeight: '80vh', flexWrap: 'wrap' }}>
+    <div className="studioLayout">
 
       {/* ---- LEFT: Config Builder ---- */}
-      <div style={{ flex: '0 0 320px', maxWidth: 360 }}>
+      <div className="studioConfig">
         <h2 className="sectionTitle" style={{ marginBottom: 16 }}>Creative Studio</h2>
         <p className="subtle" style={{ marginBottom: 20, fontSize: 13 }}>
           Pick a primitive and preset, fill in your content, then generate a preview or batch.
@@ -467,7 +467,7 @@ export default function StudioPage() {
       </div>
 
       {/* ---- CENTER: Preview / Batch Grid ---- */}
-      <div style={{ flex: '1 1 400px', minWidth: 300 }}>
+      <div className="studioPreview">
 
         {/* Single preview */}
         {preview && !batch && (
@@ -507,11 +507,7 @@ export default function StudioPage() {
                 </button>
               </div>
             </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: 10,
-            }}>
+            <div className="studioBatchGrid">
               {(batch.results || []).map((v: StudioBatchVariant) => (
                 <div key={v.index}
                   onClick={() => toggleVariant(v.index)}
@@ -660,7 +656,7 @@ export default function StudioPage() {
       </div>
 
       {/* ---- RIGHT: Critique Panel ---- */}
-      <div style={{ flex: '0 0 260px', maxWidth: 300 }}>
+      <div className="studioCritique">
         {activeCritique && (
           <CritiquePanel critique={activeCritique} />
         )}
@@ -933,6 +929,20 @@ function VariantLightbox({
     return () => window.removeEventListener('keydown', handler);
   }, [variantIndex, batch.results.length, onClose, onNavigate, selectedElement]);
 
+  // Touch swipe navigation
+  const touchStartX = useRef<number | null>(null);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 50) return; // too short
+    if (dx > 0 && variantIndex > 0) onNavigate(variantIndex - 1);
+    if (dx < 0 && variantIndex < batch.results.length - 1) onNavigate(variantIndex + 1);
+  }, [variantIndex, batch.results.length, onNavigate]);
+
   // Reset state on variant change
   useEffect(() => {
     setSelectedElement(null);
@@ -987,6 +997,8 @@ function VariantLightbox({
   return (
     <div
       onClick={() => { if (!selectedElement) onClose(); }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: 'rgba(0,0,0,0.88)',
@@ -1015,7 +1027,7 @@ function VariantLightbox({
 
       {/* Main content */}
       <div onClick={e => e.stopPropagation()}
-        style={{ cursor: 'default', display: 'flex', gap: 16, maxWidth: '95vw', maxHeight: '95vh', alignItems: 'flex-start' }}>
+        className="studioLightboxContent">
 
         {/* Image with annotation overlay */}
         <div style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>

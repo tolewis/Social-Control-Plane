@@ -3134,3 +3134,246 @@ button:active, .chip:active, .listItem:active {
   padding: 6px 12px;
   font-size: 0.8rem;
 }
+
+/* ===================================================================== */
+/*  Studio — responsive layout                                           */
+/* ===================================================================== */
+
+.studioLayout {
+  display: flex;
+  gap: 24px;
+  padding: 0 8px;
+  min-height: 80vh;
+}
+.studioConfig {
+  flex: 0 0 320px;
+  max-width: 360px;
+  overflow-y: auto;
+}
+.studioPreview {
+  flex: 1 1 400px;
+  min-width: 0;
+}
+.studioCritique {
+  flex: 0 0 260px;
+  max-width: 300px;
+  overflow-y: auto;
+}
+.studioBatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.studioLightboxContent {
+  cursor: default;
+  display: flex;
+  gap: 16px;
+  max-width: 95vw;
+  max-height: 95vh;
+  align-items: flex-start;
+}
+
+@media (max-width: 980px) {
+  .studioLayout {
+    flex-direction: column;
+    gap: 16px;
+    min-height: auto;
+  }
+  .studioConfig {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .studioPreview {
+    flex: none;
+    width: 100%;
+  }
+  .studioCritique {
+    flex: none;
+    width: 100%;
+    max-width: none;
+  }
+  .studioLightboxContent {
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .studioConfig {
+    max-height: none;
+  }
+  .studioBatchGrid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+/* ===================================================================== */
+/*  Engage — community comment management                                */
+/* ===================================================================== */
+
+.engageStats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.engageStat {
+  flex: 1 1 120px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 100px;
+}
+.engageStat .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.engageStat .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.engageStat .value.warn { color: var(--warn); }
+.engageStat .value.ok { color: var(--ok); }
+
+/* Comment cards — mobile */
+.engageCard {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.engageCard:hover {
+  border-color: var(--accent, var(--text));
+}
+.engageCard.expanded {
+  border-color: var(--accent, var(--text));
+}
+.engageCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.engagePageBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+.engageCommentPreview {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.engagePostContext {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg0);
+  border-radius: 6px;
+  border-left: 3px solid var(--border);
+}
+.engagePostContext .postLabel {
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.engageActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.engageKbSources {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.engageKbTag {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--border);
+  color: var(--muted);
+}
+.engageSlopBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.engageSlopBadge.clean { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.engageSlopBadge.minor { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.engageSlopBadge.bad { background: color-mix(in srgb, var(--err) 20%, transparent); color: var(--err); }
+
+/* Desktop table for engage */
+.engageTable .postCol { max-width: 200px; }
+.engageTable .commentCol { max-width: 280px; }
+.engageTable td { vertical-align: top; }
+
+/* Reject note inline input */
+.engageRejectInput {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.engageRejectInput input {
+  flex: 1;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg0);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+/* Edit textarea */
+.engageEditArea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent, var(--border));
+  border-radius: 6px;
+  background: var(--bg0);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+  margin-top: 6px;
+}
+
+@media (max-width: 980px) {
+  .engageStats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .engageDesktop { display: none; }
+}
+@media (min-width: 981px) {
+  .engageMobile { display: none; }
+}

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   IconBolt,
+  IconChat,
   IconCheckSquare,
   IconGauge,
   IconPlug,
@@ -51,6 +52,7 @@ type NavItem = {
 const nav: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: IconGauge },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
+  { label: 'Engage', href: '/engage', icon: IconChat },
   { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Studio', href: '/studio', icon: IconBolt },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
@@ -63,8 +65,8 @@ const navBottom: NavItem[] = [
 const mobileNav: NavItem[] = [
   { label: 'Home', href: '/', icon: IconGauge },
   { label: 'Review', href: '/review', icon: IconCheckSquare },
+  { label: 'Engage', href: '/engage', icon: IconChat },
   { label: 'Queue', href: '/queue', icon: IconQueue },
-  { label: 'Calendar', href: '/calendar', icon: IconCalendar },
 ];
 
 function isActive(pathname: string, href: string) {

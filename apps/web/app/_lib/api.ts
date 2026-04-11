@@ -655,3 +655,63 @@ export function publishBulk(draftIds: string[]): Promise<{
     body: JSON.stringify({ draftIds }),
   });
 }
+
+/* ------------------------------------------------------------------ */
+/*  Engage — community commenting                                      */
+/* ------------------------------------------------------------------ */
+
+export type EngageCommentRecord = {
+  id: string;
+  engagePostId: string;
+  connectionId: string;
+  commentText: string;
+  kbSources: string[];
+  slopScore: number;
+  status: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  rejectionNote: string | null;
+  fbCommentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  engagePost?: {
+    fbPostId: string;
+    postUrl: string | null;
+    postText: string | null;
+    engagePage?: { name: string };
+  };
+};
+
+export type EngageStats = {
+  today: number;
+  dailyCap: number;
+  perPageCap: number;
+  pending: number;
+  totalPosted: number;
+  activePages: number;
+};
+
+export function fetchEngageComments(status?: string, limit?: number): Promise<{ comments: EngageCommentRecord[] }> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (limit) params.set('limit', String(limit));
+  return apiFetch(`/engage/comments?${params}`);
+}
+
+export function fetchEngageStats(): Promise<EngageStats> {
+  return apiFetch('/engage/stats');
+}
+
+export function approveEngageComment(id: string, body?: { reviewedBy?: string; editedText?: string }): Promise<{ comment: { id: string; status: string } }> {
+  return apiFetch(`/engage/comments/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function rejectEngageComment(id: string, body?: { reviewedBy?: string; rejectionNote?: string }): Promise<{ comment: { id: string; status: string } }> {
+  return apiFetch(`/engage/comments/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
+}
