@@ -305,6 +305,69 @@ export function registerStudioRoutes(
     };
   });
 
+  // ---- POST /studio/batch/:batchId/review ----
+  // Per-variant approve/reject with optional notes. Lightweight — no Media/Draft creation.
+  // Used by ad template workflow: approve/reject variants, sync state to manifest.json.
+  app.post('/studio/batch/:batchId/review', async (request, reply) => {
+    const { batchId } = request.params as { batchId: string };
+    const body = z.object({
+      reviews: z.array(z.object({
+        index: z.number(),
+        decision: z.enum(['approved', 'rejected']),
+        notes: z.string().optional(),
+      })),
+    }).parse(request.body);
+
+    const batch = await prisma.studioBatch.findUnique({ where: { id: batchId } });
+    if (!batch) return reply.code(404).send({ error: 'not_found' });
+    if (batch.status !== 'complete') {
+      return reply.code(409).send({ error: 'batch_not_complete', status: batch.status });
+    }
+
+    const results = (batch.results ?? []) as Array<Record<string, unknown>>;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+
+    for (const review of body.reviews) {
+      const variant = results.find(r => (r as { index: number }).index === review.index);
+      if (!variant) continue;
+
+      variant.approved = review.decision === 'approved';
+      variant.rejected = review.decision === 'rejected';
+      if (review.notes) variant.notes = review.notes;
+      variant.reviewedAt = new Date().toISOString();
+
+      if (review.decision === 'approved') approvedCount++;
+      else rejectedCount++;
+    }
+
+    await prisma.studioBatch.update({
+      where: { id: batchId },
+      data: { results: results as unknown as any },
+    });
+
+    await prisma.auditEvent.create({
+      data: {
+        entityType: 'studio_batch',
+        entityId: batchId,
+        action: 'reviewed',
+        payload: { approvedCount, rejectedCount, totalReviews: body.reviews.length },
+      },
+    });
+
+    const totalApproved = results.filter(r => (r as { approved?: boolean }).approved).length;
+    const totalRejected = results.filter(r => (r as { rejected?: boolean }).rejected).length;
+
+    return {
+      reviewed: body.reviews.length,
+      approvedCount,
+      rejectedCount,
+      totalApproved,
+      totalRejected,
+      totalPending: results.length - totalApproved - totalRejected,
+    };
+  });
+
   // ---- DELETE /studio/batch/:batchId ----
   app.delete('/studio/batch/:batchId', async (request, reply) => {
     const { batchId } = request.params as { batchId: string };

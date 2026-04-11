@@ -9,6 +9,7 @@ import {
   studioCreateBatch,
   fetchStudioBatch,
   studioApproveBatch,
+  studioReviewVariant,
   studioExport,
   studioRevise,
   type StudioRegistry,
@@ -17,6 +18,7 @@ import {
   type StudioBatchVariant,
   type StudioBatchSummary,
   type StudioExportItem,
+  type StudioReviewResult,
   type CritiqueResult,
   type LayoutElement,
   type LayoutSidecar,
@@ -111,6 +113,11 @@ export default function StudioPage() {
   const [inspectedVariant, setInspectedVariant] = useState<number | null>(null);
   const [lightboxVariant, setLightboxVariant] = useState<number | null>(null);
   const [previewLightbox, setPreviewLightbox] = useState(false);
+
+  // Review state (per-variant approve/reject)
+  const [reviewingVariant, setReviewingVariant] = useState<number | null>(null);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -241,6 +248,24 @@ export default function StudioPage() {
       setApproving(false);
     }
   }, [batch, selectedVariants, refreshHistory]);
+
+  // Review a single variant (approve/reject with notes)
+  const handleReview = useCallback(async (variantIndex: number, decision: 'approved' | 'rejected', notes?: string) => {
+    if (!batch) return;
+    setReviewBusy(true);
+    try {
+      await studioReviewVariant(batch.batchId, [{ index: variantIndex, decision, notes }]);
+      const updated = await fetchStudioBatch(batch.batchId);
+      setBatch(updated);
+      setReviewingVariant(null);
+      setReviewNotes('');
+      refreshHistory();
+    } catch (err) {
+      setApproveResult(err instanceof Error ? err.message : 'Review failed');
+    } finally {
+      setReviewBusy(false);
+    }
+  }, [batch, refreshHistory]);
 
   // Export approved variants at Meta Ads dimensions
   const handleExport = useCallback(async () => {
@@ -493,9 +518,19 @@ export default function StudioPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span className="subtle" style={{ fontSize: 13 }}>
                 {batch.status === 'complete'
-                  ? `${batch.rendered} variants rendered`
+                  ? `${batch.rendered} variants`
                   : `Rendering ${batch.rendered}/${batch.count}...`}
-                {selectedVariants.size > 0 && ` \u2022 ${selectedVariants.size} selected`}
+                {(() => {
+                  const results = batch.results || [];
+                  const approved = results.filter(r => r.approved).length;
+                  const rejected = results.filter(r => r.rejected).length;
+                  const pending = results.length - approved - rejected;
+                  const parts: string[] = [];
+                  if (approved > 0) parts.push(`${approved} approved`);
+                  if (rejected > 0) parts.push(`${rejected} rejected`);
+                  if (pending > 0 && (approved > 0 || rejected > 0)) parts.push(`${pending} pending`);
+                  return parts.length > 0 ? ` \u2022 ${parts.join(', ')}` : '';
+                })()}
               </span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} onClick={selectAllPassing}>
@@ -547,13 +582,91 @@ export default function StudioPage() {
                       Render failed
                     </div>
                   )}
-                  <div style={{ padding: '6px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
-                    <span style={{ color: scoreColor(v.critiqueScore), fontWeight: 600 }}>
-                      {v.critiqueScore}/100
-                    </span>
-                    <span style={{ color: 'var(--muted)' }}>
-                      {v.approved ? 'Approved' : `#${v.index}`}
-                    </span>
+                  <div style={{ padding: '6px 8px', fontSize: 12 }}>
+                    {/* Score + status row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ color: scoreColor(v.critiqueScore), fontWeight: 600 }}>
+                        {v.critiqueScore}/100
+                      </span>
+                      <span style={{
+                        color: v.approved ? 'var(--ok)' : v.rejected ? 'var(--err)' : 'var(--muted)',
+                        fontWeight: v.approved || v.rejected ? 600 : 400,
+                      }}>
+                        {v.approved ? '✓ Approved' : v.rejected ? '✗ Rejected' : `#${v.index}`}
+                      </span>
+                    </div>
+                    {/* Filename */}
+                    {v.filename && (
+                      <div style={{ color: 'var(--muted)', fontSize: 10, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {v.filename}
+                      </div>
+                    )}
+                    {/* Review notes */}
+                    {v.notes && (
+                      <div style={{ color: 'var(--warn)', fontSize: 10, fontStyle: 'italic', marginBottom: 4 }}>
+                        {v.notes}
+                      </div>
+                    )}
+                    {/* Approve/Reject buttons */}
+                    {!v.approved && !v.rejected && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 2 }} onClick={e => e.stopPropagation()}>
+                        <button
+                          disabled={reviewBusy}
+                          onClick={() => handleReview(v.index, 'approved')}
+                          style={{
+                            flex: 1, padding: '3px 0', borderRadius: 4, border: 'none',
+                            background: 'var(--ok)', color: '#fff', fontSize: 11, fontWeight: 600,
+                            cursor: 'pointer', opacity: reviewBusy ? 0.5 : 1,
+                          }}>✓</button>
+                        <button
+                          disabled={reviewBusy}
+                          onClick={() => setReviewingVariant(reviewingVariant === v.index ? null : v.index)}
+                          style={{
+                            flex: 1, padding: '3px 0', borderRadius: 4, border: 'none',
+                            background: 'var(--err)', color: '#fff', fontSize: 11, fontWeight: 600,
+                            cursor: 'pointer', opacity: reviewBusy ? 0.5 : 1,
+                          }}>✗</button>
+                      </div>
+                    )}
+                    {/* Rejection note input */}
+                    {reviewingVariant === v.index && (
+                      <div style={{ marginTop: 4 }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          placeholder="Rejection note..."
+                          value={reviewNotes}
+                          onChange={e => setReviewNotes(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleReview(v.index, 'rejected', reviewNotes); }}
+                          style={{
+                            width: '100%', padding: '4px 6px', fontSize: 11, borderRadius: 4,
+                            border: '1px solid var(--border)', background: 'var(--panel-2)', color: 'var(--text)',
+                            boxSizing: 'border-box',
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          disabled={reviewBusy}
+                          onClick={() => handleReview(v.index, 'rejected', reviewNotes)}
+                          style={{
+                            width: '100%', marginTop: 3, padding: '3px 0', borderRadius: 4, border: 'none',
+                            background: 'var(--err)', color: '#fff', fontSize: 11, fontWeight: 600,
+                            cursor: 'pointer', opacity: reviewBusy ? 0.5 : 1,
+                          }}>Reject with note</button>
+                      </div>
+                    )}
+                    {/* Undo buttons for already-reviewed */}
+                    {(v.approved || v.rejected) && (
+                      <div style={{ marginTop: 2 }} onClick={e => e.stopPropagation()}>
+                        <button
+                          disabled={reviewBusy}
+                          onClick={() => handleReview(v.index, v.approved ? 'rejected' : 'approved')}
+                          style={{
+                            width: '100%', padding: '2px 0', borderRadius: 4,
+                            border: '1px solid var(--border)', background: 'transparent',
+                            color: 'var(--muted)', fontSize: 10, cursor: 'pointer',
+                          }}>{v.approved ? 'Reject instead' : 'Approve instead'}</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

@@ -532,9 +532,22 @@ export interface StudioBatchVariant {
   height: number;
   sizeBytes: number;
   approved: boolean;
+  rejected?: boolean;
+  notes?: string;
+  reviewedAt?: string;
+  filename?: string;
   mediaId: string | null;
   draftIds: string[];
   layout?: LayoutSidecar;
+}
+
+export interface StudioReviewResult {
+  reviewed: number;
+  approvedCount: number;
+  rejectedCount: number;
+  totalApproved: number;
+  totalRejected: number;
+  totalPending: number;
 }
 
 export interface StudioBatchResult {
@@ -605,6 +618,16 @@ export function studioApproveBatch(
   return apiFetch<StudioApproveResult>(`/studio/batch/${batchId}/approve`, {
     method: 'POST',
     body: JSON.stringify({ approved, connectionIds, scheduledFor }),
+  });
+}
+
+export function studioReviewVariant(
+  batchId: string,
+  reviews: Array<{ index: number; decision: 'approved' | 'rejected'; notes?: string }>,
+): Promise<StudioReviewResult> {
+  return apiFetch<StudioReviewResult>(`/studio/batch/${batchId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ reviews }),
   });
 }
 
