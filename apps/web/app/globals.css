@@ -3332,9 +3332,64 @@ button:active, .chip:active, .listItem:active {
 .engageSlopBadge.bad { background: color-mix(in srgb, var(--err) 20%, transparent); color: var(--err); }
 
 /* Desktop table for engage */
-.engageTable .postCol { max-width: 200px; }
-.engageTable .commentCol { max-width: 280px; }
+.engageTable .postCol { max-width: 220px; }
+.engageTable .commentCol { max-width: 300px; }
 .engageTable td { vertical-align: top; }
+
+/* Expanded two-column: post (left) vs comment (right) */
+.engageExpandedGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 4px;
+}
+.engageExpandedLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.engagePostLink {
+  font-size: 0.7rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--info);
+  text-decoration: none;
+  margin-left: auto;
+}
+.engagePostLink:hover { text-decoration: underline; }
+.engageOriginalPost {
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  border-left: 3px solid var(--warn);
+}
+.engageOriginalPostBody {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.engageOurComment {
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  border-left: 3px solid var(--ok);
+}
+.engageOurCommentBody {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Reject note inline input */
 .engageRejectInput {
@@ -3373,6 +3428,9 @@ button:active, .chip:active, .listItem:active {
     grid-template-columns: repeat(2, 1fr);
   }
   .engageDesktop { display: none; }
+  .engageExpandedGrid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (min-width: 981px) {
   .engageMobile { display: none; }

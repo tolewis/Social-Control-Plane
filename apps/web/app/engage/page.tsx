@@ -391,49 +391,61 @@ function ExpandedContent({
   const isPending = c.status === 'pending_review';
   const isLoading = actionLoading === c.id;
   const postText = c.engagePost?.postText ?? '';
+  const postUrl = c.engagePost?.postUrl;
+  const pageName = c.engagePost?.engagePage?.name ?? '';
 
   return (
     <div>
-      {/* Original post context */}
-      {postText && (
-        <div className="engagePostContext">
-          <div className="postLabel">Original Post</div>
-          {postText}
-        </div>
-      )}
-
-      {/* Comment text (or edit textarea) */}
-      {editingId === c.id ? (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4 }}>Edit Comment</div>
-          <textarea
-            className="engageEditArea"
-            value={editText}
-            onChange={e => setEditText(e.target.value)}
-            rows={4}
-          />
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <button className="btn sm" disabled={isLoading} onClick={() => onApprove(c.id, editText)}>
-              {isLoading ? '...' : 'Save & Approve'}
-            </button>
-            <button className="btn sm ghost" onClick={() => setEditingId(null)}>Cancel</button>
+      {/* Two-column: original post (left) + our comment (right) */}
+      <div className="engageExpandedGrid">
+        {/* LEFT: Original Facebook post */}
+        <div className="engageOriginalPost">
+          <div className="engageExpandedLabel">
+            Original Post on {pageName}
+            {postUrl && (
+              <a href={postUrl} target="_blank" rel="noopener noreferrer" className="engagePostLink">
+                View on Facebook &#8599;
+              </a>
+            )}
+          </div>
+          <div className="engageOriginalPostBody">
+            {postText || <span className="subtle">No post text captured</span>}
           </div>
         </div>
-      ) : (
-        <div style={{ marginTop: 10, fontSize: '0.88rem', lineHeight: 1.5 }}>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4 }}>Comment Draft</div>
-          {c.commentText}
-        </div>
-      )}
 
-      {/* KB sources */}
-      {c.kbSources.length > 0 && (
-        <div className="engageKbSources">
-          {c.kbSources.map((src, i) => (
-            <span key={i} className="engageKbTag">{src}</span>
-          ))}
+        {/* RIGHT: Our comment draft */}
+        <div className="engageOurComment">
+          <div className="engageExpandedLabel">Our Comment as TackleRoom</div>
+          {editingId === c.id ? (
+            <div>
+              <textarea
+                className="engageEditArea"
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                rows={4}
+              />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button className="btn sm" disabled={isLoading} onClick={() => onApprove(c.id, editText)}>
+                  {isLoading ? '...' : 'Save & Approve'}
+                </button>
+                <button className="btn sm ghost" onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="engageOurCommentBody">{c.commentText}</div>
+          )}
+
+          {/* KB sources */}
+          {c.kbSources.length > 0 && (
+            <div className="engageKbSources">
+              <span style={{ fontSize: '0.7rem', color: 'var(--muted)', marginRight: 4 }}>KB:</span>
+              {c.kbSources.map((src, i) => (
+                <span key={i} className="engageKbTag">{src}</span>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Rejection note */}
       {c.rejectionNote && (
