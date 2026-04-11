@@ -145,7 +145,7 @@ export default function EngagePage() {
         <div className="engageStats">
           <div className="engageStat">
             <div className="label">Today</div>
-            <div className="value">{stats.today}<span className="subtle" style={{ fontSize: '0.75rem', fontWeight: 400 }}> / {stats.dailyCap}</span></div>
+            <div className="value">{stats.today}<span className="subtle" style={{ fontSize: '0.75rem', fontWeight: 400 }}> {stats.capMode === 'soft' ? `guide ${stats.dailyCap}` : `/ ${stats.dailyCap}`}</span></div>
           </div>
           <div className="engageStat">
             <div className="label">Pending</div>

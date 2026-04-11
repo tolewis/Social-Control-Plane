@@ -19,8 +19,7 @@ import { randomUUID } from 'node:crypto';
 import type { Queue } from 'bullmq';
 import type { PrismaClient } from '@prisma/client';
 
-// Ramp schedule — configurable via /engage/config
-// Week 1: 5/day (voice calibration). Week 2: 30. Week 3: 100. Week 4+: 300.
+// Volume guidance — configurable via env. These are soft guide rails, not hard stops.
 const DEFAULT_DAILY_CAP = 300;
 const DEFAULT_PER_PAGE_CAP = 3;
 
@@ -63,6 +62,27 @@ export function registerEngageRoutes(
     return {
       reviewedAt: { gte: todayStart },
       status: { in: ['approved', 'posted', 'failed'] as string[] },
+    };
+  }
+
+  function getCapGuidance(todayCount: number, pageCommentToday: number, dailyCap: number, perPageCap: number) {
+    const overDailyCap = todayCount >= dailyCap;
+    const overPageCap = pageCommentToday >= perPageCap;
+
+    if (!overDailyCap && !overPageCap) return null;
+
+    return {
+      overDailyCap,
+      overPageCap,
+      todayCount,
+      pageCommentToday,
+      dailyCap,
+      perPageCap,
+      message: overDailyCap && overPageCap
+        ? `Soft cap exceeded: ${todayCount}/${dailyCap} today and ${pageCommentToday}/${perPageCap} on this page.`
+        : overDailyCap
+          ? `Soft daily cap exceeded: ${todayCount}/${dailyCap} today.`
+          : `Soft per-page cap exceeded: ${pageCommentToday}/${perPageCap} on this page today.`,
     };
   }
 
@@ -325,19 +345,7 @@ export function registerEngageRoutes(
       }),
     ]);
 
-    if (todayCount >= dailyCap) {
-      return reply.code(429).send({
-        error: 'daily_cap_reached',
-        message: `Maximum ${dailyCap} comments per day`,
-      });
-    }
-
-    if (pageCommentToday >= perPageCap) {
-      return reply.code(429).send({
-        error: 'page_daily_cap_reached',
-        message: `Maximum ${perPageCap} comments per page per day`,
-      });
-    }
+    const capGuidance = getCapGuidance(todayCount, pageCommentToday, dailyCap, perPageCap);
 
     // Update status
     await prisma.engageComment.update({
@@ -372,9 +380,10 @@ export function registerEngageRoutes(
     await audit('EngageComment', id, 'approved', {
       reviewedBy: body.reviewedBy,
       fbPostId: comment.engagePost.fbPostId,
+      capGuidance,
     });
 
-    return { comment: { id, status: 'approved', jobId } };
+    return { comment: { id, status: 'approved', jobId }, capGuidance };
   });
 
   // -----------------------------------------------------------------------
@@ -437,9 +446,6 @@ export function registerEngageRoutes(
     const todayCount = await prisma.engageComment.count({
       where: postedTodayWhere(todayStart),
     });
-    if (todayCount >= dailyCap) {
-      return reply.code(429).send({ error: 'daily_cap_reached', message: `Maximum ${dailyCap} comments per day` });
-    }
 
     const post = await prisma.engagePost.findUnique({
       where: { id: body.engagePostId },
@@ -462,9 +468,7 @@ export function registerEngageRoutes(
         engagePost: { engagePageId: post.engagePageId },
       },
     });
-    if (pageCommentToday >= perPageCap) {
-      return reply.code(429).send({ error: 'page_daily_cap_reached', message: `Maximum ${perPageCap} comments per page per day` });
-    }
+    const capGuidance = getCapGuidance(todayCount, pageCommentToday, dailyCap, perPageCap);
 
     // Create comment record with status 'approved' (auto-approved by quality gates)
     const comment = await prisma.engageComment.create({
@@ -510,11 +514,13 @@ export function registerEngageRoutes(
       engagePostId: body.engagePostId,
       slopScore: body.slopScore,
       scheduledDelayMs: delayMs,
+      capGuidance,
     });
 
     return reply.code(201).send({
       comment: { id: comment.id, status: 'approved', jobId },
       scheduledDelayMs: delayMs,
+      capGuidance,
     });
   });
 
@@ -536,6 +542,7 @@ export function registerEngageRoutes(
       today: todayComments,
       dailyCap: Number(process.env.ENGAGE_DAILY_CAP) || DEFAULT_DAILY_CAP,
       perPageCap: Number(process.env.ENGAGE_PER_PAGE_CAP) || DEFAULT_PER_PAGE_CAP,
+      capMode: 'soft',
       pending: pendingCount,
       totalPosted: postedCount,
       activePages: totalPages,

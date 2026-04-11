@@ -7,7 +7,7 @@ It exists for cases like Tackle Room community engagement, where agents should:
 - find active discussion threads
 - draft helpful comments
 - route them through approval when needed
-- enforce volume limits
+- track volume guidance without hard-blocking good opportunities
 - post through the worker, not directly from random scripts
 
 ## Scope
@@ -91,15 +91,15 @@ Important files:
 These support page targeting, authenticated scraping, and post discovery before data is submitted into SCP.
 
 ## Rate limits and guardrails
-Env-driven caps:
+Env-driven guidance values:
 - `ENGAGE_DAILY_CAP`
 - `ENGAGE_PER_PAGE_CAP`
 
-These are enforced on actual posting attempts, at approve-time and auto-post time. Draft creation stays open so approval-first queues do not burn the daily cap before anything goes live.
+These are soft guide rails, not hard stops. SCP records and surfaces when posting volume moves past the configured guidance, but approval and auto-post can still proceed. Draft creation stays open so approval-first queues do not burn the guideline before anything goes live.
 
 Current operating stance:
 - keep daily volume intentionally bounded
-- avoid repeated hits on the same page
+- avoid repeated hits on the same page unless there is a real reason
 - prefer active discussion threads over dead posts
 - do not let agents spray comments without review logic
 

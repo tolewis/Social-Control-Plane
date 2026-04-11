@@ -693,6 +693,7 @@ export type EngageStats = {
   today: number;
   dailyCap: number;
   perPageCap: number;
+  capMode?: 'soft' | 'hard';
   pending: number;
   totalPosted: number;
   activePages: number;
@@ -731,7 +732,7 @@ export function fetchEngageStats(): Promise<EngageStats> {
   return apiFetch('/engage/stats');
 }
 
-export function approveEngageComment(id: string, body?: { reviewedBy?: string; editedText?: string }): Promise<{ comment: { id: string; status: string } }> {
+export function approveEngageComment(id: string, body?: { reviewedBy?: string; editedText?: string }): Promise<{ comment: { id: string; status: string }; capGuidance?: { message: string } | null }> {
   return apiFetch(`/engage/comments/${id}/approve`, {
     method: 'POST',
     body: JSON.stringify(body ?? {}),
