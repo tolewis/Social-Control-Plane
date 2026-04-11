@@ -370,6 +370,69 @@ export function registerStudioRoutes(
     };
   });
 
+  // ---- POST /studio/batch/:batchId/queue-deploy ----
+  // Signal that a reviewed batch is ready for Meta Ads deployment.
+  // Fires a Discord webhook (if configured) and marks the batch as deployment-queued.
+  // Captain Bill picks up the deployment from here.
+  app.post('/studio/batch/:batchId/queue-deploy', async (request, reply) => {
+    const { batchId } = request.params as { batchId: string };
+
+    const batch = await prisma.studioBatch.findUnique({ where: { id: batchId } });
+    if (!batch) return reply.code(404).send({ error: 'not_found' });
+
+    const results = (batch.results ?? []) as Array<{ approved?: boolean; rejected?: boolean; filename?: string }>;
+    const approved = results.filter(r => r.approved);
+    const rejected = results.filter(r => r.rejected);
+    const pending = results.length - approved.length - rejected.length;
+
+    if (approved.length === 0) {
+      return reply.code(400).send({ error: 'no_approved_variants', message: 'Approve at least one variant before queuing for deploy.' });
+    }
+
+    const config = (batch.config ?? {}) as Record<string, unknown>;
+    const template = String(config.template || 'unknown');
+    const funnel = String(config.funnel || '');
+
+    // Fire Discord webhook if configured
+    const webhookUrl = process.env.META_PAID_WEBHOOK_URL || process.env.ALERT_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const msg = [
+          `📋 **Ad Batch Ready for Deploy**`,
+          `Template: **${template}**${funnel ? ` (${funnel.toUpperCase()})` : ''}`,
+          `Approved: **${approved.length}** variants | Rejected: ${rejected.length} | Pending: ${pending}`,
+          ``,
+          `Batch ID: \`${batchId}\``,
+          `Run \`node sync-studio-state.js\` then deploy approved ads.`,
+        ].join('\n');
+
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: msg }),
+        });
+      } catch { /* webhook failure is non-blocking */ }
+    }
+
+    await prisma.auditEvent.create({
+      data: {
+        entityType: 'studio_batch',
+        entityId: batchId,
+        action: 'queued_for_deploy',
+        payload: { template, funnel, approvedCount: approved.length, rejectedCount: rejected.length },
+      },
+    });
+
+    return {
+      queued: true,
+      template,
+      approvedCount: approved.length,
+      rejectedCount: rejected.length,
+      pendingCount: pending,
+      message: `${approved.length} variants from ${template} queued for Meta Ads deployment.`,
+    };
+  });
+
   // ---- DELETE /studio/batch/:batchId ----
   app.delete('/studio/batch/:batchId', async (request, reply) => {
     const { batchId } = request.params as { batchId: string };

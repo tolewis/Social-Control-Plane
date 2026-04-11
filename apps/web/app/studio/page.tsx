@@ -10,6 +10,7 @@ import {
   fetchStudioBatch,
   studioApproveBatch,
   studioReviewVariant,
+  studioQueueDeploy,
   studioExport,
   studioRevise,
   type StudioRegistry,
@@ -657,13 +658,30 @@ export default function StudioPage() {
               ))}
             </div>
 
-            {/* Review status bar */}
-            {batch.status === 'complete' && approveResult && (
-              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13,
-                color: approveResult.includes('failed') ? 'var(--err)' : 'var(--ok)',
-                background: approveResult.includes('failed') ? 'rgba(251,113,133,0.08)' : 'rgba(54,211,153,0.08)',
-              }}>
-                {approveResult}
+            {/* Review status + deploy button */}
+            {batch.status === 'complete' && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {approveResult && (
+                  <span style={{ fontSize: 13,
+                    color: approveResult.includes('failed') ? 'var(--err)' : 'var(--ok)',
+                  }}>
+                    {approveResult}
+                  </span>
+                )}
+                {(batch.results || []).some(r => r.approved) && (
+                  <button className="btn primary"
+                    style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px' }}
+                    onClick={async () => {
+                      try {
+                        const result = await studioQueueDeploy(batch.batchId);
+                        setApproveResult(result.message);
+                      } catch (err) {
+                        setApproveResult(err instanceof Error ? err.message : 'Deploy queue failed');
+                      }
+                    }}>
+                    🚀 Send to Captain Bill
+                  </button>
+                )}
               </div>
             )}
           </div>

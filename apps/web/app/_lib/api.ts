@@ -632,6 +632,15 @@ export function studioReviewVariant(
   });
 }
 
+export function studioQueueDeploy(batchId: string): Promise<{
+  queued: boolean;
+  template: string;
+  approvedCount: number;
+  message: string;
+}> {
+  return apiFetch(`/studio/batch/${batchId}/queue-deploy`, { method: 'POST' });
+}
+
 export function deleteStudioBatch(batchId: string) {
   return apiFetch<void>(`/studio/batch/${batchId}`, { method: 'DELETE' });
 }
