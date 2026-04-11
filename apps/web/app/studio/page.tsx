@@ -319,124 +319,124 @@ export default function StudioPage() {
   return (
     <div className="studioLayout">
 
-      {/* ---- LEFT: Config Builder ---- */}
+      {/* ---- LEFT: Batch Review Panel ---- */}
       <div className="studioConfig">
         <h2 className="sectionTitle" style={{ marginBottom: 16 }}>Creative Studio</h2>
         <p className="subtle" style={{ marginBottom: 20, fontSize: 13 }}>
-          Pick a primitive and preset, fill in your content, then generate a preview or batch.
+          Review ad creative batches. Approve or reject variants individually or in bulk.
         </p>
 
-        {/* Preset */}
-        <div className="formGroup">
-          <label className="formLabel">Preset (canvas size)</label>
-          <select className="formInput" value={preset} onChange={e => setPreset(e.target.value)}>
-            {registry?.presets.map(p => (
-              <option key={p.name} value={p.name}>{p.name} ({p.width}x{p.height})</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Primitive */}
-        <div className="formGroup">
-          <label className="formLabel">Primitive (layout type)</label>
-          <select className="formInput" value={primitive} onChange={e => { setPrimitive(e.target.value); setPrimitiveConfig({}); }}>
-            <option value="">None (text + CTA only)</option>
-            {registry?.primitives.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.id} ({p.variants.length} variant{p.variants.length !== 1 ? 's' : ''})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Layout personality */}
-        <div className="formGroup">
-          <label className="formLabel">Layout personality</label>
-          <select className="formInput" value={personality} onChange={e => setPersonality(e.target.value)}>
-            <option value="editorial-left">Editorial left (text left, image right)</option>
-            <option value="centered-hero">Centered hero (text centered over image)</option>
-            <option value="split-card">Split card (frosted panel over image)</option>
-          </select>
-        </div>
-
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-
-        {/* Text fields */}
-        <div className="formGroup">
-          <label className="formLabel">Headline (2-8 words, what stops the scroll)</label>
-          <input className="formInput" value={headline} onChange={e => setHeadline(e.target.value)}
-            placeholder="SHARPEN YOUR HOOKS" />
-        </div>
-        <div className="formGroup">
-          <label className="formLabel">Subhead (supporting detail, 1-2 lines)</label>
-          <input className="formInput" value={subhead} onChange={e => setSubhead(e.target.value)}
-            placeholder="Thirty seconds with a file changes everything" />
-        </div>
-        <div className="formGroup">
-          <label className="formLabel">CTA button text</label>
-          <input className="formInput" value={cta} onChange={e => setCta(e.target.value)}
-            placeholder="SHOP NOW" />
-        </div>
-        <div className="formGroup">
-          <label className="formLabel">Footer text (brand name or tagline)</label>
-          <input className="formInput" value={footer} onChange={e => setFooter(e.target.value)}
-            placeholder="TACKLEROOM" />
-        </div>
-
-        {/* Primitive-specific fields */}
-        {primFields.length > 0 && (
-          <>
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-            <p className="subtle" style={{ fontSize: 12, marginBottom: 8 }}>
-              {primitive} settings
-            </p>
-            {primFields.map(field => (
-              <div className="formGroup" key={field.key}>
-                <label className="formLabel">{field.label}</label>
-                {field.type === 'textarea' ? (
-                  <textarea className="formInput" rows={3}
-                    value={primitiveConfig[field.key] ?? ''}
-                    placeholder={field.placeholder}
-                    onChange={e => setPrimitiveConfig(prev => ({ ...prev, [field.key]: e.target.value }))} />
-                ) : (
-                  <input className="formInput"
-                    type={field.type === 'number' ? 'number' : 'text'}
-                    value={primitiveConfig[field.key] ?? ''}
-                    placeholder={field.placeholder}
-                    onChange={e => setPrimitiveConfig(prev => ({ ...prev, [field.key]: e.target.value }))} />
-                )}
+        {/* Batch name + funnel when viewing a batch */}
+        {(() => {
+          if (!batch) return null;
+          const cfg = (batch.config ?? {}) as Record<string, unknown>;
+          if (!cfg.template) return null;
+          const textCfg = (cfg.text ?? {}) as Record<string, string>;
+          return (
+            <div style={{
+              padding: '10px 12px', borderRadius: 8, marginBottom: 16,
+              background: 'var(--panel-2)', border: '1px solid var(--border)',
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', textTransform: 'capitalize' }}>
+                {String(cfg.template).replace(/-/g, ' ')}
               </div>
-            ))}
-          </>
+              {cfg.funnel ? (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  {'Funnel: ' + String(cfg.funnel).toUpperCase()}
+                </div>
+              ) : null}
+              {textCfg.subhead ? (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.4 }}>
+                  {textCfg.subhead.slice(0, 120)}
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
+
+        {/* Bulk actions when variants are selected */}
+        {batch && selectedVariants.size > 0 && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 8, marginBottom: 16,
+            background: 'var(--panel-2)', border: '1px solid var(--accent)',
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+              {selectedVariants.size} selected
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <button className="btn" disabled={reviewBusy}
+                onClick={async () => {
+                  if (!batch) return;
+                  setReviewBusy(true);
+                  try {
+                    await studioReviewVariant(batch.batchId,
+                      [...selectedVariants].map(idx => ({ index: idx, decision: 'approved' as const })));
+                    const updated = await fetchStudioBatch(batch.batchId);
+                    setBatch(updated);
+                    setSelectedVariants(new Set());
+                    refreshHistory();
+                  } finally { setReviewBusy(false); }
+                }}
+                style={{ flex: 1, background: 'var(--ok)', color: '#fff', fontWeight: 600, fontSize: 12 }}>
+                ✓ Approve All
+              </button>
+              <button className="btn" disabled={reviewBusy}
+                onClick={() => setReviewingVariant(-1)}
+                style={{ flex: 1, background: 'var(--err)', color: '#fff', fontWeight: 600, fontSize: 12 }}>
+                ✗ Reject All
+              </button>
+            </div>
+            {/* Bulk rejection note input */}
+            {reviewingVariant === -1 && (
+              <div>
+                <input type="text" placeholder="Rejection note for all selected..."
+                  value={reviewNotes} onChange={e => setReviewNotes(e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key !== 'Enter' || !batch) return;
+                    setReviewBusy(true);
+                    try {
+                      await studioReviewVariant(batch.batchId,
+                        [...selectedVariants].map(idx => ({ index: idx, decision: 'rejected' as const, notes: reviewNotes })));
+                      const updated = await fetchStudioBatch(batch.batchId);
+                      setBatch(updated);
+                      setSelectedVariants(new Set());
+                      setReviewingVariant(null);
+                      setReviewNotes('');
+                      refreshHistory();
+                    } finally { setReviewBusy(false); }
+                  }}
+                  style={{
+                    width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 6,
+                    border: '1px solid var(--border)', background: 'var(--panel)', color: 'var(--text)',
+                    boxSizing: 'border-box', marginBottom: 4,
+                  }}
+                  autoFocus
+                />
+                <button className="btn" disabled={reviewBusy}
+                  onClick={async () => {
+                    if (!batch) return;
+                    setReviewBusy(true);
+                    try {
+                      await studioReviewVariant(batch.batchId,
+                        [...selectedVariants].map(idx => ({ index: idx, decision: 'rejected' as const, notes: reviewNotes })));
+                      const updated = await fetchStudioBatch(batch.batchId);
+                      setBatch(updated);
+                      setSelectedVariants(new Set());
+                      setReviewingVariant(null);
+                      setReviewNotes('');
+                      refreshHistory();
+                    } finally { setReviewBusy(false); }
+                  }}
+                  style={{ width: '100%', background: 'var(--err)', color: '#fff', fontWeight: 600, fontSize: 12 }}>
+                  Reject {selectedVariants.size} with note
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn primary" onClick={handlePreview}
-            disabled={previewLoading || !headline}
-            style={{ opacity: previewLoading || !headline ? 0.5 : 1 }}>
-            {previewLoading ? 'Rendering...' : 'Generate Preview'}
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button className="btn" onClick={handleBatch}
-              disabled={batchLoading || !headline}
-              style={{ opacity: batchLoading || !headline ? 0.5 : 1 }}>
-              {batchLoading ? `Rendering ${batch?.rendered ?? 0}/${batchCount}...` : 'Generate Batch'}
-            </button>
-            <select style={{ width: 56, padding: '4px 2px', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
-              value={batchCount} onChange={e => setBatchCount(Number(e.target.value))}>
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Batch History — shows agent-created and UI-created batches */}
-        <div style={{ marginTop: 20 }}>
+        {/* Batch History */}
+        <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <h3 className="sectionTitle" style={{ fontSize: 13, margin: 0 }}>Recent Batches</h3>
             <button className="btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={refreshHistory}>
@@ -446,7 +446,7 @@ export default function StudioPage() {
           {historyLoading ? (
             <p className="subtle" style={{ fontSize: 12 }}>Loading...</p>
           ) : batchHistory.length === 0 ? (
-            <p className="subtle" style={{ fontSize: 12 }}>No batches yet. Generate one above or let an agent create one via the API.</p>
+            <p className="subtle" style={{ fontSize: 12 }}>No batches yet. Agents create batches via the API for your review.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
               {batchHistory.map(b => (
@@ -465,6 +465,9 @@ export default function StudioPage() {
                     <div style={{ fontWeight: 600, fontSize: 12 }}>
                       {b.count} variants
                       {b.approvedCount > 0 && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>{b.approvedCount} approved</span>}
+                      {b.rejectedCount > 0 && (
+                        <span style={{ color: 'var(--err)', marginLeft: 6 }}>{b.rejectedCount} rejected</span>
+                      )}
                     </div>
                     <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
                       {new Date(b.createdAt).toLocaleDateString()} {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -493,24 +496,6 @@ export default function StudioPage() {
 
       {/* ---- CENTER: Preview / Batch Grid ---- */}
       <div className="studioPreview">
-
-        {/* Single preview */}
-        {preview && !batch && (
-          <div>
-            <div onClick={() => setPreviewLightbox(true)}
-              style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--panel)', cursor: 'zoom-in' }}>
-              <img
-                src={apiUrl(preview.previewUrl)}
-                alt="Studio preview"
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 13, color: 'var(--muted)' }}>
-              <span>{preview.width}x{preview.height}</span>
-              <span>{Math.round(preview.sizeBytes / 1024)} KB</span>
-            </div>
-          </div>
-        )}
 
         {/* Batch grid */}
         {batch && (
@@ -757,12 +742,12 @@ export default function StudioPage() {
         )}
 
         {/* Empty state */}
-        {!preview && !batch && !previewLoading && !previewError && (
+        {!batch && !previewLoading && !previewError && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, color: 'var(--muted)', textAlign: 'center', gap: 8 }}>
             <span style={{ fontSize: 48, opacity: 0.3 }}>&#9881;</span>
-            <p style={{ fontSize: 15 }}>Fill in your content and click Generate Preview.</p>
+            <p style={{ fontSize: 15 }}>Select a batch from the left to review.</p>
             <p style={{ fontSize: 13, maxWidth: 320 }}>
-              Or generate a batch of variants to compare side by side. Approved variants automatically become drafts for publishing.
+              Approve or reject variants individually, or select multiple and use bulk actions.
             </p>
           </div>
         )}

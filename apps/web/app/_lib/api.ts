@@ -571,6 +571,7 @@ export interface StudioApproveResult {
 
 export interface StudioBatchSummary {
   batchId: string;
+  rejectedCount: number;
   status: 'pending' | 'rendering' | 'complete' | 'failed' | 'expired';
   count: number;
   rendered: number;

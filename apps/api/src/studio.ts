@@ -78,6 +78,7 @@ export function registerStudioRoutes(
       batches: batches.map(b => {
         const results = (b.results ?? []) as Array<{ critiqueScore?: number; approved?: boolean }>;
         const approvedCount = results.filter(r => r.approved).length;
+        const rejectedCount = results.filter(r => (r as { rejected?: boolean }).rejected).length;
         const avgScore = results.length > 0
           ? Math.round(results.reduce((s, r) => s + (r.critiqueScore ?? 0), 0) / results.length)
           : 0;
@@ -88,6 +89,7 @@ export function registerStudioRoutes(
           count: b.count,
           rendered: b.rendered,
           approvedCount,
+          rejectedCount,
           avgScore,
           createdAt: b.createdAt.toISOString(),
           expiresAt: b.expiresAt.toISOString(),
