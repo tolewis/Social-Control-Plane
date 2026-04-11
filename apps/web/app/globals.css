@@ -690,7 +690,7 @@ a {
     display: none !important;
   }
   .mobileOnly {
-    display: grid !important;
+    display: initial !important;
   }
 }
 
@@ -1850,56 +1850,85 @@ button:active, .chip:active, .listItem:active {
     font-size: 0.68rem;
   }
 
+  /* Calendar header — compact date text */
+  .calendarHeaderTitle {
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .calendarHeader {
+    margin-bottom: 8px;
+  }
+
+  /* Timeline — match week view density */
   .timelineWrap {
-    border-radius: 10px;
+    border-radius: 8px;
   }
 
   .timelineContainer {
-    height: calc(16 * 38px); /* tighter: 38px per hour vs 60px desktop */
-    max-height: 60vh;
-  }
-
-  .timelineEvent {
-    left: 48px;
-    right: 6px;
-    padding: 4px 8px;
-  }
-
-  .timelineEvent.compact {
-    padding: 3px 8px;
-  }
-
-  .timelineEventHeader {
-    font-size: 0.78rem;
-    gap: 4px;
-  }
-
-  .timelineEventContent {
-    font-size: 0.75rem;
-    margin-top: 2px;
-  }
-
-  .timelineNowDot {
-    margin-left: 38px;
-    width: 8px;
-    height: 8px;
-  }
-
-  .timelineHourLabel {
-    width: 42px;
-    padding: 0 4px;
-    font-size: 0.62rem;
+    height: calc(16 * 32px); /* tight: 32px per hour, matches week row height */
+    max-height: 65vh;
   }
 
   .dayViewTitle {
-    font-size: 0.88rem;
-    padding: 8px 10px;
+    font-size: 0.78rem;
+    padding: 6px 10px;
+    font-weight: 600;
+  }
+
+  .timelineHourLabel {
+    width: 36px;
+    padding: 0 3px;
+    font-size: 0.6rem;
+  }
+
+  .timelineEvent {
+    left: 40px;
+    right: 4px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    border-left-width: 2px;
+  }
+
+  .timelineEvent.compact {
+    padding: 2px 6px;
+  }
+
+  .timelineEventHeader {
+    font-size: 0.72rem;
+    gap: 4px;
+    margin-bottom: 0;
+  }
+
+  .timelineEventName {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  .timelineEventTime {
+    font-size: 0.65rem;
+  }
+
+  .timelineEventContent {
+    font-size: 0.68rem;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timelineNowDot {
+    margin-left: 32px;
+    width: 7px;
+    height: 7px;
   }
 
   .goldenLegend {
-    padding: 4px 10px;
-    font-size: 0.68rem;
-    gap: 8px;
+    padding: 3px 8px;
+    font-size: 0.62rem;
+    gap: 6px;
   }
 }
 

@@ -252,7 +252,8 @@ function DayView({
   return (
     <div className="dayViewWrap">
       <div className="dayViewTitle">
-        {viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        <span className="desktopOnly">{viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+        <span className="mobileOnly">{viewDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
       </div>
       <GoldenHoursLegend />
       <div className="dayGrid">
@@ -318,7 +319,8 @@ function TimelineView({
   return (
     <div className="timelineWrap">
       <div className="dayViewTitle">
-        {viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        <span className="desktopOnly">{viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+        <span className="mobileOnly">{viewDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
       </div>
       <GoldenHoursLegend />
       <div className="timelineContainer">
@@ -539,7 +541,7 @@ export default function CalendarPage() {
       }
       return `${MONTH_NAMES[start.getMonth()].slice(0, 3)} ${start.getDate()} – ${MONTH_NAMES[end.getMonth()].slice(0, 3)} ${end.getDate()}, ${end.getFullYear()}`;
     }
-    return viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    return viewDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }, [view, viewMonth, viewYear, weekDays, viewDate]);
 
   if (loading) {
