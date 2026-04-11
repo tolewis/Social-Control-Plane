@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { StatusPill } from '../_components/ui';
-import { useEngageComments, useEngageStats } from '../hooks/useEngage';
-import { approveEngageComment, rejectEngageComment, type EngageCommentRecord } from '../_lib/api';
+import { useEngageComments, useEngagePosts, useEngageStats } from '../hooks/useEngage';
+import { approveEngageComment, rejectEngageComment, type EngageCommentRecord, type EngagePostRecord } from '../_lib/api';
 
 type StatusFilter = 'all' | 'pending_review' | 'approved' | 'posted' | 'rejected' | 'failed';
 
@@ -51,7 +51,10 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+type TabView = 'comments' | 'posts';
+
 export default function EngagePage() {
+  const [tab, setTab] = useState<TabView>('comments');
   const [filter, setFilter] = useState<StatusFilter>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -60,6 +63,7 @@ export default function EngagePage() {
     return 'all';
   });
   const { comments, loading, error, refetch } = useEngageComments(filter === 'all' ? undefined : filter);
+  const { posts: discoveredPosts, loading: postsLoading, refetch: refetchPosts } = useEngagePosts();
   const { stats, refetch: refetchStats } = useEngageStats();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -149,103 +153,142 @@ export default function EngagePage() {
         </div>
       )}
 
-      {/* ---- Filter chips ---- */}
-      <div className="chips" style={{ marginBottom: 16 }}>
-        {STATUS_FILTERS.map(f => (
-          <button
-            key={f.value}
-            className={`chip ${filter === f.value ? 'active' : ''}`}
-            onClick={() => setFilter(f.value)}
-          >
-            {f.label}
-          </button>
-        ))}
-        <button className="chip" onClick={() => { refetch(); refetchStats(); }} style={{ marginLeft: 'auto' }}>
+      {/* ---- Tab switcher: Comments vs Posts ---- */}
+      <div className="chips" style={{ marginBottom: 10 }}>
+        <button className={`chip ${tab === 'comments' ? 'active' : ''}`} onClick={() => setTab('comments')}>
+          Comments{comments.length > 0 ? ` (${comments.length})` : ''}
+        </button>
+        <button className={`chip ${tab === 'posts' ? 'active' : ''}`} onClick={() => setTab('posts')}>
+          Discovered Posts{discoveredPosts.length > 0 ? ` (${discoveredPosts.length})` : ''}
+        </button>
+        <button className="chip" onClick={() => { refetch(); refetchPosts(); refetchStats(); }} style={{ marginLeft: 'auto' }}>
           Refresh
         </button>
       </div>
+
+      {/* ---- Filter chips (comments tab only) ---- */}
+      {tab === 'comments' && (
+        <div className="chips" style={{ marginBottom: 12 }}>
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f.value}
+              className={`chip ${filter === f.value ? 'active' : ''}`}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {actionError && (
         <div style={{ color: 'var(--err)', fontSize: '0.85rem', marginBottom: 12 }}>{actionError}</div>
       )}
 
-      {loading && <p className="subtle">Loading...</p>}
-      {error && <p style={{ color: 'var(--err)' }}>{error}</p>}
+      {/* ============ COMMENTS TAB ============ */}
+      {tab === 'comments' && (
+        <>
+          {loading && <p className="subtle">Loading...</p>}
+          {error && <p style={{ color: 'var(--err)' }}>{error}</p>}
 
-      {!loading && comments.length === 0 && (
-        <div className="emptyState">
-          <p className="subtle">No comments {filter !== 'all' ? `with status "${filter}"` : 'yet'}.</p>
-          <p className="subtle" style={{ fontSize: '0.82rem' }}>Captain Bill will start generating soon.</p>
-        </div>
+          {!loading && comments.length === 0 && (
+            <div className="emptyState">
+              <p className="subtle">No comments {filter !== 'all' ? `with status "${filter}"` : 'yet'}.</p>
+              <p className="subtle" style={{ fontSize: '0.82rem' }}>Captain Bill will start generating soon.</p>
+            </div>
+          )}
+
+          {/* Desktop table */}
+          {!loading && comments.length > 0 && (
+            <div className="engageDesktop">
+              <div className="tableWrap">
+                <table className="table engageTable">
+                  <thead>
+                    <tr>
+                      <th>Page</th>
+                      <th className="postCol">Post</th>
+                      <th className="commentCol">Comment</th>
+                      <th>Slop</th>
+                      <th>Status</th>
+                      <th>Age</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comments.map(c => (
+                      <CommentRow
+                        key={c.id}
+                        comment={c}
+                        expanded={expandedId === c.id}
+                        onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        onApprove={handleApprove}
+                        onReject={handleReject}
+                        onStartEdit={startEdit}
+                        actionLoading={actionLoading}
+                        rejectingId={rejectingId}
+                        setRejectingId={setRejectingId}
+                        rejectNote={rejectNote}
+                        setRejectNote={setRejectNote}
+                        editingId={editingId}
+                        editText={editText}
+                        setEditText={setEditText}
+                        setEditingId={setEditingId}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile cards */}
+          {!loading && comments.length > 0 && (
+            <div className="engageMobile">
+              {comments.map(c => (
+                <CommentCard
+                  key={c.id}
+                  comment={c}
+                  expanded={expandedId === c.id}
+                  onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onStartEdit={startEdit}
+                  actionLoading={actionLoading}
+                  rejectingId={rejectingId}
+                  setRejectingId={setRejectingId}
+                  rejectNote={rejectNote}
+                  setRejectNote={setRejectNote}
+                  editingId={editingId}
+                  editText={editText}
+                  setEditText={setEditText}
+                  setEditingId={setEditingId}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* ---- Desktop table view ---- */}
-      {!loading && comments.length > 0 && (
-        <div className="engageDesktop">
-          <div className="tableWrap">
-            <table className="table engageTable">
-              <thead>
-                <tr>
-                  <th>Page</th>
-                  <th className="postCol">Post</th>
-                  <th className="commentCol">Comment</th>
-                  <th>Slop</th>
-                  <th>Status</th>
-                  <th>Age</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comments.map(c => (
-                  <CommentRow
-                    key={c.id}
-                    comment={c}
-                    expanded={expandedId === c.id}
-                    onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                    onStartEdit={startEdit}
-                    actionLoading={actionLoading}
-                    rejectingId={rejectingId}
-                    setRejectingId={setRejectingId}
-                    rejectNote={rejectNote}
-                    setRejectNote={setRejectNote}
-                    editingId={editingId}
-                    editText={editText}
-                    setEditText={setEditText}
-                    setEditingId={setEditingId}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* ============ POSTS TAB ============ */}
+      {tab === 'posts' && (
+        <>
+          {postsLoading && <p className="subtle">Loading posts...</p>}
 
-      {/* ---- Mobile card view ---- */}
-      {!loading && comments.length > 0 && (
-        <div className="engageMobile">
-          {comments.map(c => (
-            <CommentCard
-              key={c.id}
-              comment={c}
-              expanded={expandedId === c.id}
-              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onStartEdit={startEdit}
-              actionLoading={actionLoading}
-              rejectingId={rejectingId}
-              setRejectingId={setRejectingId}
-              rejectNote={rejectNote}
-              setRejectNote={setRejectNote}
-              editingId={editingId}
-              editText={editText}
-              setEditText={setEditText}
-              setEditingId={setEditingId}
-            />
-          ))}
-        </div>
+          {!postsLoading && discoveredPosts.length === 0 && (
+            <div className="emptyState">
+              <p className="subtle">No discovered posts yet.</p>
+              <p className="subtle" style={{ fontSize: '0.82rem' }}>Run the scraper or tell Captain Bill to find posts.</p>
+            </div>
+          )}
+
+          {!postsLoading && discoveredPosts.length > 0 && (
+            <div>
+              {discoveredPosts.map(post => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -488,6 +531,45 @@ function ExpandedContent({
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Discovered post card (Posts tab)                                    */
+/* ------------------------------------------------------------------ */
+
+function PostCard({ post }: { post: EngagePostRecord }) {
+  const pageName = post.engagePage?.name ?? '—';
+  const category = post.engagePage?.category ?? '';
+
+  return (
+    <div className="engageCard" style={{ cursor: 'default' }}>
+      <div className="engageCardHeader">
+        <span className="engagePageBadge">{pageName}</span>
+        {category && <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{category}</span>}
+        {post.commented ? (
+          <StatusPill tone="ok">commented</StatusPill>
+        ) : (
+          <StatusPill tone="neutral">available</StatusPill>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--muted)' }}>
+          {timeAgo(post.discoveredAt)}
+        </span>
+      </div>
+      <div style={{ fontSize: '0.88rem', lineHeight: 1.5, marginTop: 4 }}>
+        {post.postText || <span className="subtle">No text captured</span>}
+      </div>
+      {post.postUrl && (
+        <a
+          href={post.postUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: '0.72rem', color: 'var(--info)', textDecoration: 'none', marginTop: 6, display: 'inline-block' }}
+        >
+          View on Facebook &#8599;
+        </a>
       )}
     </div>
   );

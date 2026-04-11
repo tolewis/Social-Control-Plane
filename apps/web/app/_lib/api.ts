@@ -691,6 +691,27 @@ export type EngageStats = {
   activePages: number;
 };
 
+export type EngagePostRecord = {
+  id: string;
+  engagePageId: string;
+  fbPostId: string;
+  postUrl: string | null;
+  postText: string | null;
+  authorName: string | null;
+  likeCount: number | null;
+  commentCount: number | null;
+  discoveredAt: string;
+  commented: boolean;
+  engagePage?: { name: string; category: string };
+};
+
+export function fetchEngagePosts(commented?: boolean, limit?: number): Promise<{ posts: EngagePostRecord[] }> {
+  const params = new URLSearchParams();
+  if (commented !== undefined) params.set('commented', String(commented));
+  if (limit) params.set('limit', String(limit));
+  return apiFetch(`/engage/posts?${params}`);
+}
+
 export function fetchEngageComments(status?: string, limit?: number): Promise<{ comments: EngageCommentRecord[] }> {
   const params = new URLSearchParams();
   if (status) params.set('status', status);

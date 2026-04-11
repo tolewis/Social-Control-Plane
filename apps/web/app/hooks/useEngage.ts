@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { fetchEngageComments, fetchEngageStats, type EngageCommentRecord, type EngageStats } from '../_lib/api';
+import { fetchEngageComments, fetchEngagePosts, fetchEngageStats, type EngageCommentRecord, type EngagePostRecord, type EngageStats } from '../_lib/api';
 
 export function useEngageComments(status?: string) {
   const [comments, setComments] = useState<EngageCommentRecord[]>([]);
@@ -24,6 +24,29 @@ export function useEngageComments(status?: string) {
   useEffect(() => { load(); }, [load]);
 
   return { comments, loading, error, refetch: load };
+}
+
+export function useEngagePosts() {
+  const [posts, setPosts] = useState<EngagePostRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchEngagePosts(undefined, 100);
+      setPosts(res.posts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load posts');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { posts, loading, error, refetch: load };
 }
 
 export function useEngageStats() {
