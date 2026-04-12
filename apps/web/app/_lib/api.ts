@@ -634,6 +634,17 @@ export function studioReviewVariant(
   });
 }
 
+export function studioImport(
+  template: string,
+  images: Array<{ filename: string; path: string; url: string }>,
+  funnel?: string,
+): Promise<{ batchId: string; template: string; count: number; message: string }> {
+  return apiFetch('/studio/import', {
+    method: 'POST',
+    body: JSON.stringify({ template, images, funnel }),
+  });
+}
+
 export function studioQueueDeploy(batchId: string): Promise<{
   queued: boolean;
   template: string;

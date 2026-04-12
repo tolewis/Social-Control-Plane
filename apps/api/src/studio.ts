@@ -310,6 +310,71 @@ export function registerStudioRoutes(
     };
   });
 
+  // ---- POST /studio/import ----
+  // Import pre-rendered ad template images as a Studio batch.
+  // This is the ONLY correct way to import external images into Studio.
+  // Validates all required fields to prevent broken records.
+  app.post('/studio/import', async (request, reply) => {
+    const body = z.object({
+      template: z.string().min(1),
+      funnel: z.string().optional(),
+      images: z.array(z.object({
+        filename: z.string().min(1),
+        path: z.string().min(1),
+        url: z.string().startsWith('/uploads/'),
+      })).min(1),
+    }).parse(request.body);
+
+    // Validate all files exist
+    const { existsSync, statSync } = await import('node:fs');
+    const missing = body.images.filter(img => !existsSync(img.path));
+    if (missing.length > 0) {
+      return reply.code(400).send({
+        error: 'files_missing',
+        missing: missing.map(m => m.path),
+        message: `${missing.length} image files not found on disk`,
+      });
+    }
+
+    const results = body.images.map((img, i) => ({
+      index: i,
+      previewPath: img.path,
+      previewUrl: img.url,
+      critiqueScore: 90,
+      width: 1080,
+      height: 1080,
+      sizeBytes: statSync(img.path).size,
+      approved: false,
+      rejected: false,
+      mediaId: null,
+      draftIds: [],
+      filename: img.filename,
+    }));
+
+    const batch = await prisma.studioBatch.create({
+      data: {
+        status: 'complete',
+        config: {
+          template: body.template,
+          source: 'ad-template-system',
+          funnel: body.funnel ?? '',
+        } as any,
+        options: { source: 'ad-template-import' } as any,
+        results: results as any,
+        count: results.length,
+        rendered: results.length,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return reply.code(201).send({
+      batchId: batch.id,
+      template: body.template,
+      count: results.length,
+      message: `Imported ${results.length} variants for ${body.template}`,
+    });
+  });
+
   // ---- POST /studio/batch/:batchId/review ----
   // Per-variant approve/reject with optional notes. Lightweight — no Media/Draft creation.
   // Used by ad template workflow: approve/reject variants, sync state to manifest.json.

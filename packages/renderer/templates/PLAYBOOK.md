@@ -186,6 +186,26 @@ Three palettes × optional mirroring for asymmetric templates:
 9. **Emoji icons don't reliably render in SVG.** Use SVG path-based icons (bolt, check, shield, target, gear, star, anchor, wave, hook).
 10. **Sharp composite order matters.** Layers are painted in array order. Anything that should appear "on top" (badges, logos) must come AFTER the elements they overlap.
 
+## SCP Studio Import (MANDATORY PROCESS)
+
+**DO NOT write inline import code.** Use the canonical import script:
+
+```bash
+# 1. Upload images to SCP
+bash ~/Dropbox/Tim/TackleRoom/Creative/lures/ad-templates/upload-to-scp.sh --all
+
+# 2. Import to Studio DB via API
+node ~/Dropbox/Tim/TackleRoom/Creative/lures/ad-templates/import-to-studio.js --all
+```
+
+The import script calls `POST /studio/import` which validates:
+- All image files exist on disk (rejects if any missing)
+- URLs have `/uploads/` prefix (rejects if malformed)
+- Sets `critiqueScore: 90`, `source: 'ad-template-system'` automatically
+- Writes `studio_batch_id` back to manifests
+
+**Why this matters:** Inline import code in agents has broken Studio twice — missing paths, wrong URL prefixes, undefined scores. The API endpoint validates everything. Use it.
+
 ## File Locations
 
 | What | Path |
