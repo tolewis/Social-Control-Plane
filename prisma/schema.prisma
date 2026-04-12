@@ -154,20 +154,23 @@ model ProviderConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Community Engagement — commenting on fishing community FB Pages
+// Community Engagement — commenting on fishing communities (FB + Reddit)
 // ---------------------------------------------------------------------------
 
 model EngagePage {
   id          String   @id @default(cuid())
-  fbPageId    String   @unique
+  fbPageId    String   @unique          // FB numeric ID or Reddit subreddit name (e.g. "r/Fishing")
+  platform    String   @default("facebook") // "facebook" | "reddit"
   name        String
-  category    String   @default("community") // community, brand, charter, media
+  category    String   @default("community") // community, brand, charter, media, subreddit
   enabled     Boolean  @default(true)
   lastScanned DateTime?
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   posts       EngagePost[]
+
+  @@index([platform])
 }
 
 model EngagePost {

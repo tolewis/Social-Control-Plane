@@ -94,12 +94,15 @@ export function registerEngageRoutes(
   }
 
   // -----------------------------------------------------------------------
-  // Pages — target Facebook pages to monitor
+  // Pages — target communities (Facebook pages + Reddit subreddits)
   // -----------------------------------------------------------------------
 
   app.get('/engage/pages', async (request) => {
-    const { enabled } = request.query as { enabled?: string };
-    const where = enabled === 'true' ? { enabled: true } : enabled === 'false' ? { enabled: false } : {};
+    const { enabled, platform } = request.query as { enabled?: string; platform?: string };
+    const where: Record<string, unknown> = {};
+    if (enabled === 'true') where.enabled = true;
+    if (enabled === 'false') where.enabled = false;
+    if (platform) where.platform = platform;
     const pages = await prisma.engagePage.findMany({
       where,
       orderBy: { name: 'asc' },
@@ -111,6 +114,7 @@ export function registerEngageRoutes(
     const body = z.object({
       fbPageId: z.string().min(1),
       name: z.string().min(1),
+      platform: z.enum(['facebook', 'reddit']).default('facebook'),
       category: z.string().default('community'),
       notes: z.string().optional(),
     }).parse(request.body);
@@ -118,13 +122,14 @@ export function registerEngageRoutes(
     const page = await prisma.engagePage.create({
       data: {
         fbPageId: body.fbPageId,
+        platform: body.platform,
         name: body.name,
         category: body.category,
         notes: body.notes,
       },
     });
 
-    await audit('EngagePage', page.id, 'created', { name: body.name, fbPageId: body.fbPageId });
+    await audit('EngagePage', page.id, 'created', { name: body.name, fbPageId: body.fbPageId, platform: body.platform });
     return reply.code(201).send({ page });
   });
 
@@ -313,7 +318,7 @@ export function registerEngageRoutes(
 
     const comment = await prisma.engageComment.findUnique({
       where: { id },
-      include: { engagePost: true },
+      include: { engagePost: { include: { engagePage: true } } },
     });
     if (!comment) return reply.code(404).send({ error: 'comment_not_found' });
     if (comment.status !== 'pending_review') {
@@ -321,6 +326,7 @@ export function registerEngageRoutes(
     }
 
     const finalText = body.editedText || comment.commentText;
+    const platform = (comment.engagePost.engagePage as { platform?: string })?.platform ?? 'facebook';
     const targetStatus = getTargetStatus(comment.engagePost);
 
     if (!targetStatus.isCommentable) {
@@ -368,18 +374,20 @@ export function registerEngageRoutes(
         connectionId: comment.connectionId,
         fbPostId: comment.engagePost.fbPostId,
         commentText: finalText,
+        platform,
       },
       {
         jobId,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
-        delay: 30_000, // 30s delay before posting
+        delay: 30_000,
       },
     );
 
     await audit('EngageComment', id, 'approved', {
       reviewedBy: body.reviewedBy,
       fbPostId: comment.engagePost.fbPostId,
+      platform,
       capGuidance,
     });
 
@@ -449,9 +457,10 @@ export function registerEngageRoutes(
 
     const post = await prisma.engagePost.findUnique({
       where: { id: body.engagePostId },
-      select: { engagePageId: true, fbPostId: true, postUrl: true },
+      select: { engagePageId: true, fbPostId: true, postUrl: true, engagePage: { select: { platform: true } } },
     });
     if (!post) return reply.code(404).send({ error: 'post_not_found' });
+    const postPlatform = (post as { engagePage?: { platform?: string } }).engagePage?.platform ?? 'facebook';
 
     const targetStatus = getTargetStatus(post);
     if (!targetStatus.isCommentable) {
@@ -501,6 +510,7 @@ export function registerEngageRoutes(
         connectionId: body.connectionId,
         fbPostId: post.fbPostId,
         commentText: body.commentText,
+        platform: postPlatform,
       },
       {
         jobId,

@@ -49,8 +49,9 @@ export type StudioCleanupJobData = {
 export type EngageCommentJobData = {
   commentId: string;
   connectionId: string;
-  fbPostId: string;
+  fbPostId: string;        // Facebook post ID or Reddit submission ID
   commentText: string;
+  platform?: 'facebook' | 'reddit';  // defaults to 'facebook'
 };
 
 export type JobNameToData = {
