@@ -577,6 +577,8 @@ export interface StudioBatchSummary {
   rendered: number;
   approvedCount: number;
   avgScore: number;
+  template: string | null;
+  funnel: string | null;
   createdAt: string;
   expiresAt: string;
 }

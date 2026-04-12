@@ -124,9 +124,10 @@ export default function StudioPage() {
   const [exporting, setExporting] = useState(false);
   const [exportResults, setExportResults] = useState<StudioExportItem[]>([]);
 
-  // Batch history (shows agent-created batches too)
+  // Batch history + filtering
   const [batchHistory, setBatchHistory] = useState<StudioBatchSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [batchFilter, setBatchFilter] = useState<'all' | 'pending' | 'reviewed' | 'rejected'>('pending');
 
   const refreshHistory = useCallback(() => {
     fetchStudioBatches()
@@ -436,60 +437,88 @@ export default function StudioPage() {
           </div>
         )}
 
-        {/* Batch History */}
+        {/* Batch History with filters */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h3 className="sectionTitle" style={{ fontSize: 13, margin: 0 }}>Recent Batches</h3>
+            <h3 className="sectionTitle" style={{ fontSize: 13, margin: 0 }}>Batches</h3>
             <button className="btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={refreshHistory}>
               Refresh
             </button>
           </div>
+          {/* Filter tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            {(['pending', 'rejected', 'reviewed', 'all'] as const).map(f => (
+              <button key={f} className="btn"
+                onClick={() => setBatchFilter(f)}
+                style={{
+                  fontSize: 10, padding: '3px 8px', textTransform: 'capitalize',
+                  background: batchFilter === f ? 'var(--accent)' : 'var(--panel)',
+                  color: batchFilter === f ? '#fff' : 'var(--muted)',
+                  border: batchFilter === f ? '1px solid var(--accent)' : '1px solid var(--border)',
+                }}>
+                {f}
+              </button>
+            ))}
+          </div>
           {historyLoading ? (
             <p className="subtle" style={{ fontSize: 12 }}>Loading...</p>
-          ) : batchHistory.length === 0 ? (
-            <p className="subtle" style={{ fontSize: 12 }}>No batches yet. Agents create batches via the API for your review.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
-              {batchHistory.map(b => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 'calc(100vh - 450px)', overflowY: 'auto' }}>
+              {batchHistory
+                .filter(b => {
+                  const pendingCount = b.count - b.approvedCount - b.rejectedCount;
+                  if (batchFilter === 'pending') return pendingCount > 0;
+                  if (batchFilter === 'rejected') return b.rejectedCount > 0;
+                  if (batchFilter === 'reviewed') return pendingCount === 0 && b.count > 0;
+                  return true; // 'all'
+                })
+                .map(b => {
+                const pendingCount = b.count - b.approvedCount - b.rejectedCount;
+                return (
                 <button key={b.batchId}
                   onClick={() => loadBatch(b.batchId)}
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 10px', borderRadius: 8,
+                    padding: '6px 8px', borderRadius: 6,
                     background: batch?.batchId === b.batchId ? 'var(--panel-3)' : 'var(--panel)',
                     border: batch?.batchId === b.batchId ? '1px solid var(--accent)' : '1px solid var(--border)',
                     cursor: 'pointer', width: '100%', textAlign: 'left',
-                    color: 'var(--text)', fontSize: 12,
+                    color: 'var(--text)', fontSize: 11,
                     transition: 'background 0.15s',
                   }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>
-                      {b.count} variants
-                      {b.approvedCount > 0 && <span style={{ color: 'var(--ok)', marginLeft: 6 }}>{b.approvedCount} approved</span>}
-                      {b.rejectedCount > 0 && (
-                        <span style={{ color: 'var(--err)', marginLeft: 6 }}>{b.rejectedCount} rejected</span>
-                      )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {b.template
+                        ? b.template.replace(/-/g, ' ')
+                        : `${b.count} variants`}
+                      {b.funnel ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{' · ' + b.funnel.toUpperCase()}</span> : null}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
-                      {new Date(b.createdAt).toLocaleDateString()} {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div style={{ fontSize: 10, marginTop: 1, display: 'flex', gap: 6 }}>
+                      {b.approvedCount > 0 && <span style={{ color: 'var(--ok)' }}>{b.approvedCount} ✓</span>}
+                      {b.rejectedCount > 0 && <span style={{ color: 'var(--err)' }}>{b.rejectedCount} ✗</span>}
+                      {pendingCount > 0 && <span style={{ color: 'var(--warn)' }}>{pendingCount} pending</span>}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: scoreColor(b.avgScore), fontWeight: 600, fontSize: 13 }}>
-                      {b.avgScore > 0 ? `${b.avgScore}` : '--'}
-                    </div>
-                    <div style={{
-                      fontSize: 10, marginTop: 2,
-                      color: b.status === 'complete' ? 'var(--ok)'
-                        : b.status === 'rendering' ? 'var(--warn)'
-                        : b.status === 'failed' ? 'var(--err)'
-                        : 'var(--muted)',
-                    }}>
-                      {b.status}
-                    </div>
+                  <div style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0, marginLeft: 4,
+                    background: pendingCount > 0 ? 'rgba(250,204,21,0.15)' : b.rejectedCount > 0 ? 'rgba(251,113,133,0.15)' : 'rgba(54,211,153,0.15)',
+                    color: pendingCount > 0 ? 'var(--warn)' : b.rejectedCount > 0 ? 'var(--err)' : 'var(--ok)',
+                  }}>
+                    {pendingCount > 0 ? 'needs review' : b.rejectedCount > 0 ? 'has rejects' : 'done'}
                   </div>
                 </button>
-              ))}
+              );})}
+              {batchHistory.filter(b => {
+                const p = b.count - b.approvedCount - b.rejectedCount;
+                if (batchFilter === 'pending') return p > 0;
+                if (batchFilter === 'rejected') return b.rejectedCount > 0;
+                if (batchFilter === 'reviewed') return p === 0 && b.count > 0;
+                return true;
+              }).length === 0 && (
+                <p className="subtle" style={{ fontSize: 11, textAlign: 'center', padding: 12 }}>
+                  No batches match this filter.
+                </p>
+              )}
             </div>
           )}
         </div>

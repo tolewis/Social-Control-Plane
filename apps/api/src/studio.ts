@@ -83,6 +83,7 @@ export function registerStudioRoutes(
           ? Math.round(results.reduce((s, r) => s + (r.critiqueScore ?? 0), 0) / results.length)
           : 0;
 
+        const config = (b.config ?? {}) as Record<string, unknown>;
         return {
           batchId: b.id,
           status: b.status,
@@ -91,6 +92,8 @@ export function registerStudioRoutes(
           approvedCount,
           rejectedCount,
           avgScore,
+          template: (config.template as string) || null,
+          funnel: (config.funnel as string) || null,
           createdAt: b.createdAt.toISOString(),
           expiresAt: b.expiresAt.toISOString(),
         };
