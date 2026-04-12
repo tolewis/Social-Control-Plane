@@ -393,9 +393,10 @@ export function registerStudioRoutes(
     const template = String(config.template || 'unknown');
     const funnel = String(config.funnel || '');
 
-    // Fire Discord webhook if configured
-    const webhookUrl = process.env.META_PAID_WEBHOOK_URL || process.env.ALERT_WEBHOOK_URL;
-    if (webhookUrl) {
+    // Post to Discord #meta-paid thread via bot API
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const threadId = process.env.META_PAID_THREAD_ID || '1485627069911007282';
+    if (botToken) {
       try {
         const msg = [
           `📋 **Ad Batch Ready for Deploy**`,
@@ -406,12 +407,15 @@ export function registerStudioRoutes(
           `Run \`node sync-studio-state.js\` then deploy approved ads.`,
         ].join('\n');
 
-        await fetch(webhookUrl, {
+        await fetch(`https://discord.com/api/v10/channels/${threadId}/messages`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Authorization': `Bot ${botToken}`,
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({ content: msg }),
         });
-      } catch { /* webhook failure is non-blocking */ }
+      } catch { /* Discord failure is non-blocking */ }
     }
 
     await prisma.auditEvent.create({
