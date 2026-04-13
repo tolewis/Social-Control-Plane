@@ -17,3 +17,4 @@ __pycache__/
 
 # Playwright session state (sensitive)
 scripts/engage-fb-state.json
+scripts/reddit-state.json

@@ -97,15 +97,19 @@ The worker branches on the `platform` field of the posting job:
 6. marks the parent post as `commented=true`
 7. marks connection `reconnect_required` if Facebook returns token error code `190`
 
-### Reddit path
-1. reads `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD`, `REDDIT_USER_AGENT` from the worker env
-2. spawns a `python3` subprocess with an inline PRAW script (30s timeout)
-3. calls `reddit.submission(id=...).reply(text)`
-4. parses JSON stdout: `{ok, commentId, error}`
-5. stores the Reddit comment id and receipt on success
-6. marks the parent post as `commented=true`
+### Reddit path (important — not autonomous)
 
-Reddit credentials must be set in the worker's environment (not per-connection) — there is no Reddit OAuth flow in SCP yet, just a single bot account.
+Reddit does not grant us API access, so the SCP worker does **not** post Reddit comments on its own. Posting is manual-assisted via headed Chrome:
+
+1. Tim runs `scripts/engage-reddit-login.py` once to save a `u/thetackleroom` session to `scripts/reddit-state.json` (gitignored).
+2. For each approved Reddit comment, Tim runs `scripts/engage-reddit-poster.py --submission-url <url> --text "..."`.
+3. The poster launches **headed Chrome** (`channel="chrome"`, `headless=False`), loads the submission on `old.reddit.com`, types the comment with realistic pacing, and **pauses** for Tim to review and solve any bot-check in the browser.
+4. Tim presses ENTER in the terminal to submit, or Ctrl+C to cancel.
+5. The script extracts the new comment permalink and prints `{ok, commentUrl, error}` JSON.
+
+The legacy `handleEngageComment.ts` worker Reddit branch — which used an embedded PRAW subprocess reading `REDDIT_CLIENT_ID/SECRET/USERNAME/PASSWORD` from env — is **dead code**. It will fail on missing credentials and should be removed or guarded with a "use scripts/engage-reddit-poster.py manually" error message. Leaving it in place is non-destructive but wasteful.
+
+**Planned fallback workflow (not built):** SCP review UI exposes each approved Reddit comment with a direct submission link and a "copy comment" button so Tim can paste and post manually in his own browser. This mirrors how TikTok operators handle similar ToS constraints. If headed Playwright gets too unreliable against Reddit's anti-bot stack, switch to this.
 
 ## Discovery tooling
 Discovery helpers live in `scripts/`.
@@ -173,6 +177,9 @@ For production use, prefer this order:
 - Facebook login: `scripts/engage-fb-login.py`
 - Facebook state: `scripts/engage-fb-state.json` (**gitignored**)
 - Reddit scraper: `scripts/engage-reddit-scraper.py` (public JSON)
-- Reddit utility: `scripts/reddit-join-subs.py`
+- Reddit login (one-off): `scripts/engage-reddit-login.py` (headed Chrome, saves session)
+- Reddit poster: `scripts/engage-reddit-poster.py` (headed Chrome, manual-assisted)
+- Reddit state: `scripts/reddit-state.json` (**gitignored**)
+- Reddit subreddit joiner: `scripts/reddit-join-subs.py`
 - Target seed list: `scripts/seed-engage-pages.json`
 - Agent runbook: `~/Documents/projects/90 System/40 Agent System/Agents/skills/scp-engage/SKILL.md`
