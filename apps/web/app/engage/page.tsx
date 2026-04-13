@@ -3,7 +3,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { StatusPill } from '../_components/ui';
 import { useEngageComments, useEngagePosts, useEngageStats } from '../hooks/useEngage';
-import { approveEngageComment, rejectEngageComment, type EngageCommentRecord, type EngagePostRecord } from '../_lib/api';
+import {
+  approveEngageComment,
+  rejectEngageComment,
+  markEngageCommentPosted,
+  type EngageCommentRecord,
+  type EngagePostRecord,
+} from '../_lib/api';
 
 type StatusFilter = 'all' | 'pending_review' | 'approved' | 'posted' | 'rejected' | 'failed';
 
@@ -60,6 +66,41 @@ function targetIssueLabel(reason?: string | null): string {
   }
 }
 
+/** Manual-post platforms have no working API — operator posts by hand. */
+function isManualPlatform(platform?: string | null): boolean {
+  return platform === 'reddit';
+}
+
+/**
+ * Copy comment text to clipboard, then open the submission URL in a new tab.
+ * Uses navigator.clipboard (desktop + mobile Safari/Chrome). Falls back to a
+ * hidden textarea + execCommand for older or permission-restricted contexts.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 type TabView = 'comments' | 'posts';
 
 export default function EngagePage() {
@@ -81,6 +122,14 @@ export default function EngagePage() {
   const [rejectNote, setRejectNote] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Auto-clear toast after 2.5s
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // Update URL when filter changes
   useEffect(() => {
@@ -128,6 +177,39 @@ export default function EngagePage() {
     }
   }, [rejectNote, refetch, refetchStats]);
 
+  /**
+   * "Copy & Open" — copies the comment to clipboard, then opens the
+   * submission URL in a new tab. The operator pastes and submits manually
+   * on the target platform (Reddit primarily). Must run before window.open
+   * so the clipboard write happens inside the user-gesture context.
+   */
+  const handleCopyAndOpen = useCallback(async (c: EngageCommentRecord) => {
+    const url = c.engagePost?.postUrl;
+    if (!url) {
+      setToast('No submission URL on this comment');
+      return;
+    }
+    const ok = await copyToClipboard(c.commentText);
+    // Open AFTER clipboard to preserve the user gesture on mobile Safari.
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setToast(ok ? 'Comment copied — paste into the open tab' : 'Open tab ready — copy failed, copy manually from SCP');
+  }, []);
+
+  const handleMarkPosted = useCallback(async (id: string) => {
+    setActionLoading(id);
+    setActionError(null);
+    try {
+      await markEngageCommentPosted(id, { reviewedBy: 'operator' });
+      refetch();
+      refetchStats();
+      setToast('Marked posted');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to mark posted');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [refetch, refetchStats]);
+
   const startEdit = (c: EngageCommentRecord) => {
     setEditingId(c.id);
     setEditText(c.commentText);
@@ -137,8 +219,32 @@ export default function EngagePage() {
   return (
     <div>
       <p className="subtle desktopOnly" style={{ marginBottom: 12, marginTop: -4 }}>
-        Community comments on fishing Facebook pages
+        Community comments on fishing pages and subreddits
       </p>
+
+      {toast && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed',
+            bottom: 'max(env(safe-area-inset-bottom), 24px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--bg2)',
+            color: 'var(--fg)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: '10px 16px',
+            fontSize: '0.88rem',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            zIndex: 1000,
+            maxWidth: '92vw',
+            textAlign: 'center',
+          }}
+        >
+          {toast}
+        </div>
+      )}
 
       {/* ---- Stats ---- */}
       {stats && (
@@ -233,6 +339,8 @@ export default function EngagePage() {
                         onApprove={handleApprove}
                         onReject={handleReject}
                         onStartEdit={startEdit}
+                        onCopyAndOpen={handleCopyAndOpen}
+                        onMarkPosted={handleMarkPosted}
                         actionLoading={actionLoading}
                         rejectingId={rejectingId}
                         setRejectingId={setRejectingId}
@@ -262,6 +370,8 @@ export default function EngagePage() {
                   onApprove={handleApprove}
                   onReject={handleReject}
                   onStartEdit={startEdit}
+                  onCopyAndOpen={handleCopyAndOpen}
+                  onMarkPosted={handleMarkPosted}
                   actionLoading={actionLoading}
                   rejectingId={rejectingId}
                   setRejectingId={setRejectingId}
@@ -314,6 +424,8 @@ type CommentRowProps = {
   onApprove: (id: string, editedText?: string) => void;
   onReject: (id: string) => void;
   onStartEdit: (c: EngageCommentRecord) => void;
+  onCopyAndOpen: (c: EngageCommentRecord) => void;
+  onMarkPosted: (id: string) => void;
   actionLoading: string | null;
   rejectingId: string | null;
   setRejectingId: (id: string | null) => void;
@@ -326,20 +438,28 @@ type CommentRowProps = {
 };
 
 function CommentRow({
-  comment: c, expanded, onToggle, onApprove, onReject, onStartEdit,
+  comment: c, expanded, onToggle, onApprove, onReject, onStartEdit, onCopyAndOpen, onMarkPosted,
   actionLoading, rejectingId, setRejectingId, rejectNote, setRejectNote,
   editingId, editText, setEditText, setEditingId,
 }: CommentRowProps) {
   const pageName = c.engagePost?.engagePage?.name ?? '—';
+  const platform = c.engagePost?.engagePage?.platform;
   const postText = c.engagePost?.postText ?? '';
   const isPending = c.status === 'pending_review';
+  const isApprovedManual = c.status === 'approved' && isManualPlatform(platform);
+  const isPosted = c.status === 'posted';
   const isLoading = actionLoading === c.id;
   const targetReady = c.engagePost?.targetStatus?.isCommentable !== false;
+  const hasUrl = !!c.engagePost?.postUrl;
+  const manual = isManualPlatform(platform);
 
   return (
     <>
       <tr onClick={onToggle} style={{ cursor: 'pointer' }} role="button">
-        <td><span className="engagePageBadge">{pageName}</span></td>
+        <td>
+          <span className="engagePageBadge">{pageName}</span>
+          {platform && <span style={{ fontSize: '0.68rem', color: 'var(--muted)', display: 'block', marginTop: 2 }}>{platform}</span>}
+        </td>
         <td className="postCol">
           <div className="engageCommentPreview">{postText.slice(0, 80)}{postText.length > 80 ? '...' : ''}</div>
         </td>
@@ -350,16 +470,38 @@ function CommentRow({
         <td><StatusPill tone={statusTone(c.status)}>{statusLabel(c.status)}</StatusPill></td>
         <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', color: 'var(--muted)' }}>{timeAgo(c.createdAt)}</td>
         <td>
-          {isPending && (
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn sm" disabled={isLoading || !targetReady} onClick={e => { e.stopPropagation(); onApprove(c.id); }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+            {hasUrl && !isPosted && (
+              <button
+                className="btn sm"
+                disabled={isLoading}
+                title="Copy comment to clipboard and open the submission in a new tab"
+                onClick={() => onCopyAndOpen(c)}
+              >
+                Copy & Open
+              </button>
+            )}
+            {isPending && !manual && (
+              <button className="btn sm" disabled={isLoading || !targetReady} onClick={() => onApprove(c.id)}>
                 {isLoading ? '...' : 'Approve'}
               </button>
-              <button className="btn sm ghost" disabled={isLoading} onClick={e => { e.stopPropagation(); setRejectingId(c.id); onToggle(); }}>
+            )}
+            {(isPending || isApprovedManual) && (
+              <button
+                className="btn sm"
+                disabled={isLoading}
+                title={manual ? 'Mark this comment as posted manually on the platform' : 'Mark posted (manual fallback)'}
+                onClick={() => onMarkPosted(c.id)}
+              >
+                {isLoading ? '...' : 'Mark Posted'}
+              </button>
+            )}
+            {isPending && (
+              <button className="btn sm ghost" disabled={isLoading} onClick={() => { setRejectingId(c.id); if (!expanded) onToggle(); }}>
                 Reject
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </td>
       </tr>
       {expanded && (
@@ -370,6 +512,8 @@ function CommentRow({
               onApprove={onApprove}
               onReject={onReject}
               onStartEdit={onStartEdit}
+              onCopyAndOpen={onCopyAndOpen}
+              onMarkPosted={onMarkPosted}
               actionLoading={actionLoading}
               rejectingId={rejectingId}
               setRejectingId={setRejectingId}
@@ -392,21 +536,40 @@ function CommentRow({
 /* ------------------------------------------------------------------ */
 
 function CommentCard({
-  comment: c, expanded, onToggle, onApprove, onReject, onStartEdit,
+  comment: c, expanded, onToggle, onApprove, onReject, onStartEdit, onCopyAndOpen, onMarkPosted,
   actionLoading, rejectingId, setRejectingId, rejectNote, setRejectNote,
   editingId, editText, setEditText, setEditingId,
 }: CommentRowProps) {
   const pageName = c.engagePost?.engagePage?.name ?? '—';
+  const platform = c.engagePost?.engagePage?.platform;
+  const hasUrl = !!c.engagePost?.postUrl;
+  const isPosted = c.status === 'posted';
+  const isLoading = actionLoading === c.id;
 
   return (
     <div className={`engageCard ${expanded ? 'expanded' : ''}`} onClick={onToggle} role="button">
       <div className="engageCardHeader">
         <span className="engagePageBadge">{pageName}</span>
+        {platform && <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>{platform}</span>}
         <StatusPill tone={statusTone(c.status)}>{statusLabel(c.status)}</StatusPill>
         <span className={`engageSlopBadge ${slopClass(c.slopScore)}`}>{c.slopScore}</span>
         <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--muted)' }}>{timeAgo(c.createdAt)}</span>
       </div>
       <div className="engageCommentPreview">{c.commentText}</div>
+
+      {/* Mobile quick action — prominent so you can copy-and-open without expanding */}
+      {hasUrl && !isPosted && (
+        <div onClick={e => e.stopPropagation()} style={{ marginTop: 8 }}>
+          <button
+            className="btn sm"
+            disabled={isLoading}
+            onClick={() => onCopyAndOpen(c)}
+            style={{ width: '100%' }}
+          >
+            Copy & Open {platform === 'reddit' ? 'Reddit' : 'Post'}
+          </button>
+        </div>
+      )}
 
       {expanded && (
         <div onClick={e => e.stopPropagation()}>
@@ -415,6 +578,8 @@ function CommentCard({
             onApprove={onApprove}
             onReject={onReject}
             onStartEdit={onStartEdit}
+            onCopyAndOpen={onCopyAndOpen}
+            onMarkPosted={onMarkPosted}
             actionLoading={actionLoading}
             rejectingId={rejectingId}
             setRejectingId={setRejectingId}
@@ -436,15 +601,19 @@ function CommentCard({
 /* ------------------------------------------------------------------ */
 
 function ExpandedContent({
-  comment: c, onApprove, onReject, onStartEdit,
+  comment: c, onApprove, onReject, onStartEdit, onCopyAndOpen, onMarkPosted,
   actionLoading, rejectingId, setRejectingId, rejectNote, setRejectNote,
   editingId, editText, setEditText, setEditingId,
 }: Omit<CommentRowProps, 'expanded' | 'onToggle'>) {
   const isPending = c.status === 'pending_review';
+  const isPosted = c.status === 'posted';
   const isLoading = actionLoading === c.id;
   const postText = c.engagePost?.postText ?? '';
   const postUrl = c.engagePost?.postUrl;
   const pageName = c.engagePost?.engagePage?.name ?? '';
+  const platform = c.engagePost?.engagePage?.platform;
+  const manual = isManualPlatform(platform);
+  const isApprovedManual = c.status === 'approved' && manual;
   const targetStatus = c.engagePost?.targetStatus;
   const targetReady = targetStatus?.isCommentable !== false;
 
@@ -458,7 +627,7 @@ function ExpandedContent({
             Original Post on {pageName}
             {postUrl && (
               <a href={postUrl} target="_blank" rel="noopener noreferrer" className="engagePostLink">
-                View on Facebook &#8599;
+                View on {platform === 'reddit' ? 'Reddit' : 'Facebook'} &#8599;
               </a>
             )}
           </div>
@@ -522,15 +691,43 @@ function ExpandedContent({
       )}
 
       {/* Actions */}
-      {isPending && editingId !== c.id && (
+      {(isPending || isApprovedManual) && editingId !== c.id && (
         <div className="engageActions">
-          <button className="btn sm" disabled={isLoading || !targetReady} onClick={() => onApprove(c.id)}>
-            {isLoading ? '...' : 'Approve'}
-          </button>
-          <button className="btn sm ghost" disabled={!targetReady} onClick={() => onStartEdit(c)}>
-            Edit & Approve
-          </button>
-          {rejectingId === c.id ? (
+          {postUrl && !isPosted && (
+            <button
+              className="btn sm"
+              disabled={isLoading}
+              title="Copy the comment to your clipboard and open the submission in a new tab. Paste and post manually."
+              onClick={() => onCopyAndOpen(c)}
+            >
+              Copy & Open
+            </button>
+          )}
+
+          {isPending && !manual && (
+            <button className="btn sm" disabled={isLoading || !targetReady} onClick={() => onApprove(c.id)}>
+              {isLoading ? '...' : 'Approve'}
+            </button>
+          )}
+
+          {(isPending || isApprovedManual) && (
+            <button
+              className="btn sm"
+              disabled={isLoading}
+              title={manual ? 'You posted this manually — mark it done in SCP' : 'Mark posted manually (fallback when the worker cannot post)'}
+              onClick={() => onMarkPosted(c.id)}
+            >
+              {isLoading ? '...' : 'Mark Posted'}
+            </button>
+          )}
+
+          {isPending && !manual && (
+            <button className="btn sm ghost" disabled={!targetReady} onClick={() => onStartEdit(c)}>
+              Edit & Approve
+            </button>
+          )}
+
+          {isPending && rejectingId === c.id ? (
             <div className="engageRejectInput">
               <input
                 placeholder="Reason (optional)"
@@ -543,11 +740,17 @@ function ExpandedContent({
               </button>
               <button className="btn sm ghost" onClick={() => setRejectingId(null)}>Cancel</button>
             </div>
-          ) : (
+          ) : isPending ? (
             <button className="btn sm ghost" disabled={isLoading} onClick={() => setRejectingId(c.id)}>
               Reject
             </button>
-          )}
+          ) : null}
+        </div>
+      )}
+
+      {manual && isPending && (
+        <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--muted)' }}>
+          {platform === 'reddit' ? 'Reddit' : platform} has no API — click "Copy & Open", paste, post manually, then "Mark Posted".
         </div>
       )}
     </div>

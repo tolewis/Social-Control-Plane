@@ -241,7 +241,7 @@ export function registerEngageRoutes(
       where,
       orderBy: { discoveredAt: 'desc' },
       take: Math.min(Number(limit) || 50, 100),
-      include: { engagePage: { select: { name: true, category: true } } },
+      include: { engagePage: { select: { name: true, category: true, platform: true } } },
     });
     return { posts: posts.map((post) => withTargetStatus(post)) };
   });
@@ -292,7 +292,7 @@ export function registerEngageRoutes(
             fbPostId: true,
             postUrl: true,
             postText: true,
-            engagePage: { select: { name: true } },
+            engagePage: { select: { name: true, platform: true } },
           },
         },
       },
@@ -353,6 +353,12 @@ export function registerEngageRoutes(
 
     const capGuidance = getCapGuidance(todayCount, pageCommentToday, dailyCap, perPageCap);
 
+    // Reddit has no worker-backed posting path — Reddit's API is closed to
+    // us. Approving a Reddit comment just records review state; the operator
+    // posts manually via the "Copy & Open" UI button and then hits
+    // /engage/comments/:id/mark-posted when done.
+    const manualPlatform = platform === 'reddit';
+
     // Update status
     await prisma.engageComment.update({
       where: { id },
@@ -365,33 +371,37 @@ export function registerEngageRoutes(
       },
     });
 
-    // Enqueue the comment posting job with 30-second delay (breathing room)
-    const jobId = `engage:comment:${id}`;
-    await publishQueue.add(
-      'engage.comment',
-      {
-        commentId: id,
-        connectionId: comment.connectionId,
-        fbPostId: comment.engagePost.fbPostId,
-        commentText: finalText,
-        platform,
-      },
-      {
-        jobId,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-        delay: 30_000,
-      },
-    );
+    let jobId: string | null = null;
+    if (!manualPlatform) {
+      // Enqueue the comment posting job with 30-second delay (breathing room)
+      jobId = `engage:comment:${id}`;
+      await publishQueue.add(
+        'engage.comment',
+        {
+          commentId: id,
+          connectionId: comment.connectionId,
+          fbPostId: comment.engagePost.fbPostId,
+          commentText: finalText,
+          platform,
+        },
+        {
+          jobId,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          delay: 30_000,
+        },
+      );
+    }
 
     await audit('EngageComment', id, 'approved', {
       reviewedBy: body.reviewedBy,
       fbPostId: comment.engagePost.fbPostId,
       platform,
+      manualPlatform,
       capGuidance,
     });
 
-    return { comment: { id, status: 'approved', jobId }, capGuidance };
+    return { comment: { id, status: 'approved', jobId }, capGuidance, manualPlatform };
   });
 
   // -----------------------------------------------------------------------
@@ -428,6 +438,70 @@ export function registerEngageRoutes(
     });
 
     return { comment: { id, status: 'rejected' } };
+  });
+
+  // -----------------------------------------------------------------------
+  // Mark posted — operator posted this comment manually (Reddit flow, or FB
+  // fallback). Updates status to 'posted' without touching the worker queue.
+  // Also flips the parent EngagePost.commented flag so we don't re-draft.
+  // Accepts any comment in pending_review | approved | failed.
+  // -----------------------------------------------------------------------
+
+  app.post('/engage/comments/:id/mark-posted', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = z.object({
+      reviewedBy: z.string().optional(),
+      commentUrl: z.string().url().optional(),
+      fbCommentId: z.string().optional(),
+      note: z.string().optional(),
+    }).parse(request.body ?? {});
+
+    const comment = await prisma.engageComment.findUnique({
+      where: { id },
+      include: { engagePost: true },
+    });
+    if (!comment) return reply.code(404).send({ error: 'comment_not_found' });
+
+    const allowedFrom = ['pending_review', 'approved', 'failed'];
+    if (!allowedFrom.includes(comment.status)) {
+      return reply.code(400).send({
+        error: 'comment_not_markable',
+        status: comment.status,
+        message: `Only pending_review/approved/failed comments can be marked posted (current: ${comment.status})`,
+      });
+    }
+
+    const receipt = {
+      manual: true,
+      commentUrl: body.commentUrl ?? null,
+      note: body.note ?? null,
+    };
+
+    await Promise.all([
+      prisma.engageComment.update({
+        where: { id },
+        data: {
+          status: 'posted',
+          reviewedBy: body.reviewedBy ?? comment.reviewedBy ?? 'operator',
+          reviewedAt: comment.reviewedAt ?? new Date(),
+          fbCommentId: body.fbCommentId ?? comment.fbCommentId,
+          receiptJson: receipt,
+          updatedAt: new Date(),
+        },
+      }),
+      prisma.engagePost.update({
+        where: { id: comment.engagePostId },
+        data: { commented: true },
+      }),
+      audit('EngageComment', id, 'marked-posted', {
+        reviewedBy: body.reviewedBy,
+        commentUrl: body.commentUrl,
+        fbCommentId: body.fbCommentId,
+        note: body.note,
+      }),
+    ]);
+
+    return { comment: { id, status: 'posted', commentUrl: body.commentUrl ?? null } };
   });
 
   // -----------------------------------------------------------------------

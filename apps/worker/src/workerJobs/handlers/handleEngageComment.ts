@@ -6,10 +6,13 @@ import { decrypt } from '../../crypto.js';
 import type { EngageCommentJobData } from '../types.js';
 
 // ---------------------------------------------------------------------------
-// Post a comment to Facebook or Reddit.
+// Post a comment to Facebook via Graph API.
 //
-// Facebook: POST /{fbPostId}/comments on Graph API
-// Reddit: Python subprocess calling PRAW (credentials from env)
+// Reddit has NO worker path. Reddit's API is closed to us, and the manual
+// browser automation path was unreliable. Reddit comments are posted by the
+// operator in the /engage UI via Copy & Open → Mark Posted. The /approve
+// endpoint therefore does not enqueue Reddit jobs — if a Reddit payload
+// somehow reaches this handler, we fail it with a clear message.
 // ---------------------------------------------------------------------------
 
 function isSyntheticFbPostId(fbPostId: string): boolean {
@@ -55,71 +58,6 @@ async function postFacebookComment(
 }
 
 // ---------------------------------------------------------------------------
-// Reddit comment posting (via Python subprocess using PRAW)
-// ---------------------------------------------------------------------------
-
-async function postRedditComment(
-  submissionId: string,
-  commentText: string,
-  log: Logger,
-): Promise<{ ok: boolean; commentId: string | null; error: string | null }> {
-  const { spawn } = await import('node:child_process');
-
-  return new Promise((resolve) => {
-    const proc = spawn('python3', [
-      '-c',
-      `
-import praw, os, json, sys
-
-client_id = os.environ.get('REDDIT_CLIENT_ID', '')
-client_secret = os.environ.get('REDDIT_CLIENT_SECRET', '')
-username = os.environ.get('REDDIT_USERNAME', '')
-password = os.environ.get('REDDIT_PASSWORD', '')
-user_agent = os.environ.get('REDDIT_USER_AGENT', 'scp-engage/1.0 by u/thetackleroom')
-
-if not all([client_id, client_secret, username, password]):
-    print(json.dumps({"ok": False, "error": "Missing Reddit credentials in env", "commentId": None}))
-    sys.exit(0)
-
-try:
-    reddit = praw.Reddit(
-        client_id=client_id,
-        client_secret=client_secret,
-        username=username,
-        password=password,
-        user_agent=user_agent,
-    )
-    submission = reddit.submission(id="${submissionId}")
-    comment = submission.reply(${JSON.stringify(commentText)})
-    print(json.dumps({"ok": True, "commentId": comment.id, "error": None}))
-except Exception as e:
-    print(json.dumps({"ok": False, "error": str(e), "commentId": None}))
-`,
-    ]);
-
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-    proc.on('close', (code) => {
-      try {
-        const result = JSON.parse(stdout.trim());
-        resolve(result);
-      } catch {
-        log.error('engage.reddit.parse_error', { stdout, stderr, code });
-        resolve({ ok: false, commentId: null, error: `process exit ${code}: ${stderr || stdout}` });
-      }
-    });
-
-    // Timeout after 30s
-    setTimeout(() => {
-      proc.kill();
-      resolve({ ok: false, commentId: null, error: 'timeout' });
-    }, 30000);
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
@@ -133,48 +71,17 @@ export async function handleEngageComment(
 
   log.info('engage.comment.start', { jobId: job.id, commentId, fbPostId, platform: effectivePlatform });
 
-  // ---------- REDDIT PATH ----------
+  // Reddit should never reach the worker — /approve skips enqueue for Reddit.
+  // If it does (legacy job, misconfigured caller), fail fast with a clear
+  // message so the operator knows to use the /engage UI manual flow.
   if (effectivePlatform === 'reddit') {
-    await job.updateProgress({ step: 'posting_reddit' });
-
-    const result = await postRedditComment(fbPostId, commentText, log);
-
-    if (result.ok) {
-      await Promise.all([
-        db.engageComment.update({
-          where: { id: commentId },
-          data: {
-            status: 'posted',
-            receiptJson: { platform: 'reddit', commentId: result.commentId },
-            fbCommentId: result.commentId,
-            updatedAt: new Date(),
-          },
-        }),
-        db.engageComment.findUnique({ where: { id: commentId } }).then(async (comment) => {
-          if (comment) {
-            await db.engagePost.update({
-              where: { id: comment.engagePostId },
-              data: { commented: true },
-            });
-          }
-        }),
-        db.auditEvent.create({
-          data: {
-            entityType: 'EngageComment',
-            entityId: commentId,
-            action: 'posted',
-            payload: { platform: 'reddit', submissionId: fbPostId, redditCommentId: result.commentId },
-          },
-        }),
-      ]);
-      log.info('engage.comment.reddit.posted', { commentId, redditCommentId: result.commentId });
-      await job.updateProgress({ step: 'succeeded' });
-    } else {
-      log.error('engage.comment.reddit.failed', { commentId, error: result.error });
-      await markCommentFailed(db, commentId, `reddit_error: ${result.error}`, { platform: 'reddit', error: result.error });
-      await job.updateProgress({ step: 'failed' });
-    }
-
+    log.error('engage.comment.reddit_unsupported', { commentId });
+    await markCommentFailed(
+      db,
+      commentId,
+      'reddit_manual_post_required: use /engage UI Copy & Open → Mark Posted',
+      { platform: 'reddit' },
+    );
     return { ok: true };
   }
 

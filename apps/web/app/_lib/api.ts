@@ -731,7 +731,7 @@ export type EngageCommentRecord = {
     postUrl: string | null;
     postText: string | null;
     targetStatus?: EngageTargetStatus;
-    engagePage?: { name: string };
+    engagePage?: { name: string; platform?: string };
   };
 };
 
@@ -757,7 +757,7 @@ export type EngagePostRecord = {
   discoveredAt: string;
   commented: boolean;
   targetStatus?: EngageTargetStatus;
-  engagePage?: { name: string; category: string };
+  engagePage?: { name: string; category: string; platform?: string };
 };
 
 export function fetchEngagePosts(commented?: boolean, limit?: number): Promise<{ posts: EngagePostRecord[] }> {
@@ -787,6 +787,16 @@ export function approveEngageComment(id: string, body?: { reviewedBy?: string; e
 
 export function rejectEngageComment(id: string, body?: { reviewedBy?: string; rejectionNote?: string }): Promise<{ comment: { id: string; status: string } }> {
   return apiFetch(`/engage/comments/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export function markEngageCommentPosted(
+  id: string,
+  body?: { reviewedBy?: string; commentUrl?: string; fbCommentId?: string; note?: string },
+): Promise<{ comment: { id: string; status: string; commentUrl: string | null } }> {
+  return apiFetch(`/engage/comments/${id}/mark-posted`, {
     method: 'POST',
     body: JSON.stringify(body ?? {}),
   });
