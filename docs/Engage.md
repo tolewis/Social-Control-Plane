@@ -1,7 +1,7 @@
-# Engage — Facebook community commenting
+# Engage — Facebook + Reddit community commenting
 
 ## Purpose
-Engage is SCP's approval-safe workflow for commenting on Facebook page posts as a connected Page.
+Engage is SCP's approval-safe workflow for commenting on Facebook page posts and Reddit submissions as a connected account.
 
 It exists for cases like Tackle Room community engagement, where agents should:
 - find active discussion threads
@@ -11,34 +11,46 @@ It exists for cases like Tackle Room community engagement, where agents should:
 - post through the worker, not directly from random scripts
 
 ## Scope
-Current implementation is built for Facebook page-post commenting.
+Current implementation supports two platforms behind a single data model:
+
+- **Facebook** — page-post commenting via Graph API, using a stored Page connection token
+- **Reddit** — submission replies via PRAW subprocess, using worker-env credentials
+
+Platform is selected by the `EngagePage.platform` field (`facebook` | `reddit`, defaults to `facebook`). The worker branches on this value at posting time.
 
 Main pieces:
-- target page registry
+- target page / subreddit registry
 - discovered post store
 - comment draft / approve / reject flow
-- auto-post shortcut for already-approved comments
-- worker-backed posting to the Graph API
-- daily and per-page rate caps
+- auto-post shortcut for already-approved comments (supports optional `scheduledFor` delay)
+- worker-backed posting with per-platform adapters
+- soft daily and per-page volume guidance (not hard stops)
 
 ## Core data flow
-1. Add target pages to monitor
-2. Discover posts worth commenting on
+1. Add target pages / subreddits to monitor (`EngagePage` with `platform` set)
+2. Discover posts worth commenting on (platform-specific scraper)
 3. Store those posts in `EngagePost`
 4. Create comment drafts in `EngageComment`
 5. Approve or reject drafts
-6. Worker posts approved comments to Facebook
+6. Worker posts approved comments via the right adapter (Graph API or PRAW)
 7. Store receipt + mark post as commented
+
+### Data-model reuse note
+The `EngagePost.fbPostId` column is platform-agnostic despite the name:
+- Facebook: `{numeric_page_id}_{post_id}` (or a `_text_{hash12}` synthetic placeholder when direct id is unknown)
+- Reddit: the short submission id (e.g. `abc1234`)
+
+Same goes for `EngagePage.fbPageId`: FB numeric id OR `r/SubredditName` for Reddit.
 
 ## Main API surface
 Implemented in `apps/api/src/engage.ts`.
 
 ### Pages
-- `GET /engage/pages`
-- `POST /engage/pages`
+- `GET /engage/pages` — supports `?enabled=true|false` and `?platform=facebook|reddit` filters
+- `POST /engage/pages` — accepts `platform: 'facebook' | 'reddit'` (defaults to `facebook`), `fbPageId`, `name`, `category`, `notes`
 - `DELETE /engage/pages/:id`
 
-Use these to manage the list of Facebook pages SCP watches.
+Use these to manage the list of Facebook pages and Reddit subreddits SCP watches.
 
 ### Posts
 - `POST /engage/posts`
@@ -64,31 +76,56 @@ Stored fields include:
 This is the normal review workflow.
 
 ### Auto-post shortcut
-- `POST /engage/auto-post`
+- `POST /engage/auto-post` — accepts optional `scheduledFor` ISO timestamp to spread comments over time (defaults to random 30-120s delay)
 
 Use this only when comment text is already approved and you want SCP to create, approve, and enqueue in one step.
+
+### Stats
+- `GET /engage/stats` — returns `{ today, dailyCap, perPageCap, capMode: 'soft', pending, totalPosted, activePages }`
 
 ## Worker behavior
 Implemented in `apps/worker/src/workerJobs/handlers/handleEngageComment.ts`.
 
-The worker:
-1. loads the connected Facebook Page token
+The worker branches on the `platform` field of the posting job:
+
+### Facebook path
+1. loads the connected Facebook Page token from `SocialConnection`
 2. decrypts the token from stored credentials
 3. rejects synthetic `_text_` placeholder targets before calling Graph API
-4. posts to `POST /{fbPostId}/comments` on Graph API for real post ids
+4. posts to `POST /{fbPostId}/comments` on Graph API v20.0
 5. stores the provider receipt on success and on failure when available
 6. marks the parent post as `commented=true`
-7. marks connection `reconnect_required` if Facebook returns token error `190`
+7. marks connection `reconnect_required` if Facebook returns token error code `190`
+
+### Reddit path
+1. reads `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD`, `REDDIT_USER_AGENT` from the worker env
+2. spawns a `python3` subprocess with an inline PRAW script (30s timeout)
+3. calls `reddit.submission(id=...).reply(text)`
+4. parses JSON stdout: `{ok, commentId, error}`
+5. stores the Reddit comment id and receipt on success
+6. marks the parent post as `commented=true`
+
+Reddit credentials must be set in the worker's environment (not per-connection) — there is no Reddit OAuth flow in SCP yet, just a single bot account.
 
 ## Discovery tooling
-Current discovery helpers live in `scripts/`.
+Discovery helpers live in `scripts/`.
 
-Important files:
-- `scripts/engage-scraper.py`
-- `scripts/engage-fb-login.py`
-- `scripts/seed-engage-pages.json`
+### Facebook
+- `scripts/engage-fb-login.py` — one-off interactive login to produce `engage-fb-state.json` (Playwright storage state, **gitignored**)
+- `scripts/engage-scraper.py` — two-phase Playwright scraper
+  - `--resolve` phase: loads `facebook.com/{slug}` in desktop mode, extracts numeric page id (`userID` pattern) from page source
+  - `--scrape` phase: loads `mbasic.facebook.com/{numeric_id}?v=timeline` in mobile context, parses post ids from `data-video-tracking` and `data-tracking` JSON, matches body-text sections to post ids
+- `scripts/seed-engage-pages.json` — seed list of target pages with slugs, names, categories
 
-These support page targeting, authenticated scraping, and post discovery before data is submitted into SCP.
+### Reddit
+- `scripts/engage-reddit-scraper.py` — public JSON scraper, no auth
+  - Reads `https://www.reddit.com/r/{sub}/hot.json`
+  - Filters: min 3 upvotes, min 1 comment, min 30 chars, max 72h age
+  - Skips stickied, removed, locked, and image-only posts
+  - Rate limit handling: 10s backoff on HTTP 429, 5s polite delay between subreddits
+- `scripts/reddit-join-subs.py` — utility for onboarding new subreddits
+
+Reddit posting happens in the worker via PRAW. Separate from discovery.
 
 ## Rate limits and guardrails
 Env-driven guidance values:
@@ -132,5 +169,10 @@ For production use, prefer this order:
 - Worker: `apps/worker/src/workerJobs/handlers/handleEngageComment.ts`
 - Worker types: `apps/worker/src/workerJobs/types.ts`
 - DB access: `apps/worker/src/db.ts`
-- Scraper: `scripts/engage-scraper.py`
+- Facebook scraper: `scripts/engage-scraper.py` (two-phase: resolve + scrape)
+- Facebook login: `scripts/engage-fb-login.py`
+- Facebook state: `scripts/engage-fb-state.json` (**gitignored**)
+- Reddit scraper: `scripts/engage-reddit-scraper.py` (public JSON)
+- Reddit utility: `scripts/reddit-join-subs.py`
 - Target seed list: `scripts/seed-engage-pages.json`
+- Agent runbook: `~/Documents/projects/90 System/40 Agent System/Agents/skills/scp-engage/SKILL.md`

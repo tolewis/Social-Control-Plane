@@ -116,5 +116,25 @@
   {"cat":"community","slug":"TexasSaltwaterFishing","name":"Texas Saltwater Fishing","notes":"TX coast community"},
   {"cat":"community","slug":"LouisianaSportsman","name":"Louisiana Sportsman","notes":"LA fishing/hunting community"},
   {"cat":"community","slug":"SCFishing","name":"SC Fishing","notes":"South Carolina fishing"},
-  {"cat":"community","slug":"GAFishing","name":"Georgia Fishing","notes":"GA coastal fishing"}
+  {"cat":"community","slug":"GAFishing","name":"Georgia Fishing","notes":"GA coastal fishing"},
+
+  {"cat":"community","slug":"fishingnc","name":"Fishing-NC.com","notes":"7.5K likes, NC saltwater fishing hub"},
+  {"cat":"community","slug":"outerbanksfishingreport","name":"Outer Banks Fishing Report","notes":"5.2K likes, Wanchese-based reports"},
+  {"cat":"community","slug":"outerbanksfishingpier","name":"Outer Banks Fishing Pier","notes":"13.8K likes, Nags Head pier"},
+  {"cat":"conservation","slug":"NCMarineFisheries","name":"NC Division of Marine Fisheries","notes":"9.5K likes, NC regs + reports"},
+  {"cat":"charter","slug":"breakwaterchartersnc","name":"Breakwater Charters","notes":"6.7K likes, Morehead City NC, very active"},
+  {"cat":"charter","slug":"fishingouterbanks","name":"Fishing Outer Banks","notes":"3K likes, OBX inshore/offshore/sound"},
+  {"cat":"charter","slug":"CaptJamieHough","name":"Redfish Mafia Charters","notes":"3.4K likes, SC inshore redfish specialist"},
+  {"cat":"charter","slug":"CharlestonCharterFishing","name":"Charleston Charter Fishing","notes":"2.8K likes, Charleston SC"},
+  {"cat":"charter","slug":"UnashamedAdventures","name":"Unashamed Adventures","notes":"McClellanville SC, light tackle inshore"},
+  {"cat":"charter","slug":"northeastfloridafishingcharters","name":"NE Florida Fishing Charters","notes":"13.8K likes, Jacksonville FL, Capt Richard Bloom"},
+  {"cat":"charter","slug":"captmattkinsey","name":"Jax Beach Fishing Charters","notes":"NE FL inshore/offshore/gigging"},
+  {"cat":"charter","slug":"IslamoradaFishingChartersFloridaKeys","name":"Islamorada Fishing Charters","notes":"Full-service FL Keys fishing"},
+  {"cat":"charter","slug":"inxsfishing","name":"INXS Fishing Charters Key West","notes":"3K likes, 47ft Viking, Key West"},
+  {"cat":"charter","slug":"DoubleThreatCharters","name":"Double Threat Charters","notes":"Miami/Keys inshore + offshore"},
+  {"cat":"charter","slug":"offthechainfishing","name":"Off The Chain Fishing","notes":"Stuart FL Treasure Coast, sailfish specialist"},
+  {"cat":"community","slug":"perdidoblane","name":"Panhandle Salt Surf Fishing","notes":"10.4K likes, 1.6K talking, Pensacola surf fishing"},
+  {"cat":"community","slug":"PanhandleFishingReport","name":"Panhandle Fishing Report","notes":"Pensacola/Destin fishing reports"},
+  {"cat":"community","slug":"panamacityfishingpage","name":"Panama City Fishing","notes":"7.2K likes, Panama City FL"},
+  {"cat":"charter","slug":"DestinFishingFleetMarina","name":"Destin Fishing Fleet Marina","notes":"2.7K likes, 34 charter boats, Destin FL"}
 ]

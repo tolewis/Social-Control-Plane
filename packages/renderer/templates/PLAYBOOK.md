@@ -206,6 +206,26 @@ The import script calls `POST /studio/import` which validates:
 
 **Why this matters:** Inline import code in agents has broken Studio twice — missing paths, wrong URL prefixes, undefined scores. The API endpoint validates everything. Use it.
 
+## SCP Studio Review + Queue for Deploy (the path to Meta)
+
+After import, variants move through Studio UI review and then out to Captain Bill for Meta Ads deployment. Three endpoints:
+
+| Endpoint | What it does |
+|----------|--------------|
+| `POST /studio/batch/:id/review` | Per-variant approve/reject with notes. Lightweight — no Media/Draft creation. Called by Studio UI as the reviewer clicks through variants. |
+| `POST /studio/batch/:id/approve` | Materialize approved variants into Media records (for ad batches, skips Draft creation because `isAdCreative = config.source === 'ad-template-system'`). |
+| `POST /studio/batch/:id/queue-deploy` | "Send to Captain Bill" button. Fires Discord bot message to `#meta-paid` thread with template, funnel, approved/rejected counts, and batch id. Returns 400 if zero variants approved. |
+
+**Flow:**
+1. Reviewer opens Studio batch, clicks through variants, approves/rejects with `/review`
+2. Reviewer clicks "Send to Captain Bill" → `/queue-deploy` fires
+3. SCP posts to Discord `META_PAID_THREAD_ID` using `DISCORD_BOT_TOKEN_CAPTAIN_BILL` (falls back to `DISCORD_BOT_TOKEN`)
+4. Captain Bill reads the message and runs the `meta-ads-deploy` skill
+5. Captain Bill runs `node sync-studio-state.js` locally to pull approval flags back into `manifest.json`
+6. Captain Bill deploys approved variants to Meta Ads
+
+**Important:** Ad batches do NOT create Drafts in `/review`. If you see ads leaking into the social review page, the batch config is missing `source: 'ad-template-system'` — check `import-to-studio.js` or the `/studio/import` call.
+
 ## File Locations
 
 | What | Path |

@@ -223,6 +223,13 @@ export function registerStudioRoutes(
 
     const { readFileSync } = await import('node:fs');
 
+    // Ad creatives from the template system deploy via Meta Ads API (Captain
+    // Bill picks them up from queue-deploy). They do NOT go through the social
+    // publish pipeline, so we must not auto-create Drafts for them — otherwise
+    // ads leak into the /review page.
+    const batchConfig = (batch.config ?? {}) as Record<string, unknown>;
+    const isAdCreative = batchConfig.source === 'ad-template-system';
+
     for (const approvedIdx of body.approved) {
       const variant = results.find(r => r.index === approvedIdx);
       if (!variant || !variant.previewPath) continue;
@@ -257,9 +264,15 @@ export function registerStudioRoutes(
       variant.approved = true;
       variant.mediaId = media.id;
 
-      // Auto-create Drafts for each connection
-      const config = batch.config as Record<string, unknown>;
-      const text = config.text as Record<string, string> | undefined;
+      // Auto-create Drafts for each connection — ONLY for non-ad Studio
+      // batches. Ad-creative batches flow out through Meta Ads deploy, not
+      // the social publish pipeline.
+      if (isAdCreative) {
+        variant.draftIds = [];
+        continue;
+      }
+
+      const text = batchConfig.text as Record<string, string> | undefined;
       const draftContent = body.content
         ?? (text?.headline ? `${text.headline}\n\n${text.subhead ?? ''}`.trim() : 'Studio creative');
 
@@ -461,8 +474,12 @@ export function registerStudioRoutes(
     const template = String(config.template || 'unknown');
     const funnel = String(config.funnel || '');
 
-    // Post to Discord #meta-paid thread via bot API
-    const botToken = process.env.DISCORD_BOT_TOKEN;
+    // Post to Discord #meta-paid thread via bot API.
+    // Use Captain Bill's bot so replies route to him (he owns ad deployment).
+    // Falls back to the general DISCORD_BOT_TOKEN if the Captain Bill token
+    // isn't configured, so this keeps working in envs that haven't been
+    // updated yet.
+    const botToken = process.env.DISCORD_BOT_TOKEN_CAPTAIN_BILL || process.env.DISCORD_BOT_TOKEN;
     const threadId = process.env.META_PAID_THREAD_ID || '1485627069911007282';
     if (botToken) {
       try {

@@ -80,6 +80,13 @@ function stopLabel(rec: string): { text: string; color: string } {
   return { text: 'Needs escalation', color: 'var(--err)' };
 }
 
+/** Detect video file extensions so we can render a <video> instead of an <img>. */
+function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const u = url.split('?')[0].toLowerCase();
+  return u.endsWith('.mp4') || u.endsWith('.mov') || u.endsWith('.webm') || u.endsWith('.m4v');
+}
+
 /* ------------------------------------------------------------------ */
 /*  Main Studio Page                                                    */
 /* ------------------------------------------------------------------ */
@@ -575,8 +582,20 @@ export default function StudioPage() {
                   }}>
                   {v.previewUrl ? (
                     <div style={{ position: 'relative' }}>
-                      <img src={apiUrl(v.previewUrl)} alt={`Variant ${v.index}`}
-                        style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      {isVideoUrl(v.previewUrl) ? (
+                        <video
+                          src={apiUrl(v.previewUrl)}
+                          muted
+                          loop
+                          playsInline
+                          autoPlay
+                          preload="metadata"
+                          style={{ width: '100%', height: 'auto', display: 'block', background: '#000' }}
+                        />
+                      ) : (
+                        <img src={apiUrl(v.previewUrl)} alt={`Variant ${v.index}`}
+                          style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      )}
                       <button
                         onClick={e => { e.stopPropagation(); setLightboxVariant(v.index); }}
                         style={{
@@ -777,12 +796,24 @@ export default function StudioPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'zoom-out',
           }}>
-          <img
-            src={apiUrl(preview.previewUrl)}
-            alt="Studio preview"
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, cursor: 'default' }}
-          />
+          {isVideoUrl(preview.previewUrl) ? (
+            <video
+              src={apiUrl(preview.previewUrl)}
+              controls
+              autoPlay
+              loop
+              playsInline
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, cursor: 'default', background: '#000' }}
+            />
+          ) : (
+            <img
+              src={apiUrl(preview.previewUrl)}
+              alt="Studio preview"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, cursor: 'default' }}
+            />
+          )}
           <button onClick={() => setPreviewLightbox(false)}
             style={{
               position: 'absolute', top: 16, right: 16,
@@ -1136,13 +1167,26 @@ function VariantLightbox({
             </div>
           )}
 
-          <img
-            ref={imgRef}
-            src={apiUrl(showBefore ? v.previewUrl : currentPreviewUrl)}
-            alt={`Variant ${v.index}`}
-            onLoad={measureImg}
-            style={{ maxWidth: '60vw', maxHeight: 'calc(90vh - 80px)', objectFit: 'contain', borderRadius: 8, display: 'block' }}
-          />
+          {isVideoUrl(showBefore ? v.previewUrl : currentPreviewUrl) ? (
+            <video
+              src={apiUrl(showBefore ? v.previewUrl : currentPreviewUrl)}
+              controls
+              autoPlay
+              loop
+              playsInline
+              muted
+              onLoadedMetadata={measureImg}
+              style={{ maxWidth: '60vw', maxHeight: 'calc(90vh - 80px)', objectFit: 'contain', borderRadius: 8, display: 'block', background: '#000' }}
+            />
+          ) : (
+            <img
+              ref={imgRef}
+              src={apiUrl(showBefore ? v.previewUrl : currentPreviewUrl)}
+              alt={`Variant ${v.index}`}
+              onLoad={measureImg}
+              style={{ maxWidth: '60vw', maxHeight: 'calc(90vh - 80px)', objectFit: 'contain', borderRadius: 8, display: 'block' }}
+            />
+          )}
 
           {/* Element bounding box overlays */}
           {showOverlay && imgSize && !showBefore && elements.length > 0 && (

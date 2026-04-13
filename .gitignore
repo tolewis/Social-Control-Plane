@@ -10,3 +10,10 @@ coverage
 
 apps/web/tsconfig.tsbuildinfo
 uploads/
+
+# Python
+__pycache__/
+*.pyc
+
+# Playwright session state (sensitive)
+scripts/engage-fb-state.json
