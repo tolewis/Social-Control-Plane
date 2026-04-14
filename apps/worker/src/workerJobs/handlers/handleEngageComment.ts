@@ -55,6 +55,7 @@ function describeApiFailure(status: number, body: unknown): string {
 
 type ResolveResult =
   | { kind: 'ok'; canonicalFbPostId: string; realFbPageId: string | null }
+  | { kind: 'video'; canonicalFbPostId: string; realFbPageId: string | null; reason: string; body: unknown }
   | { kind: 'needs_attention'; reason: string; body: unknown }
   | { kind: 'retry'; reason: string; body: unknown };
 
@@ -62,9 +63,13 @@ async function resolveCanonicalFbPostId(
   accessToken: string,
   fbPostId: string,
 ): Promise<ResolveResult> {
+  // Ask for `type` so we can tell videos/reels apart from regular posts.
+  // Graph API's page-to-page comment path doesn't work on video objects —
+  // they return code=10 or silently reject — so we surface those as
+  // needs_attention (with a REEL-specific note) rather than wasting a POST.
   const url =
     `https://graph.facebook.com/v20.0/${encodeURIComponent(fbPostId)}` +
-    `?fields=id,from&access_token=${encodeURIComponent(accessToken)}`;
+    `?fields=id,from,type&access_token=${encodeURIComponent(accessToken)}`;
 
   let res: Response;
   try {
@@ -79,8 +84,24 @@ async function resolveCanonicalFbPostId(
   if (res.ok) {
     const id = (body as { id?: string }).id;
     const fromId = (body as { from?: { id?: string } }).from?.id ?? null;
+    const type = (body as { type?: string }).type ?? null;
     if (!id) {
       return { kind: 'retry', reason: 'resolver_missing_id', body };
+    }
+    // Video / reel detection — FB returns `type: "video"` for both Reels
+    // and uploaded video posts. Graph API's comment endpoint on video
+    // objects is gated: page tokens without special permissions hit a
+    // code=10 "Application does not have permission" wall. Tim can still
+    // comment on these manually in the FB app; we queue them as
+    // needs_attention instead of burning the POST attempt.
+    if (type && (type === 'video' || type === 'reel')) {
+      return {
+        kind: 'video',
+        canonicalFbPostId: id,
+        realFbPageId: fromId,
+        reason: `target is type=${type} (FB reels/videos block page-to-page comments)`,
+        body,
+      };
     }
     return { kind: 'ok', canonicalFbPostId: id, realFbPageId: fromId };
   }
@@ -228,6 +249,34 @@ export async function handleEngageComment(
         resolved.body,
       );
       await job.updateProgress({ step: 'needs_attention' });
+      return { ok: true };
+    }
+    if (resolved.kind === 'video') {
+      // Video/reel object — Graph API rejects page-to-page comments here.
+      // Still cache the canonical IDs (useful if we later build a reel
+      // manual-comment flow), persist the real page id, and surface as
+      // needs_attention with a REEL-specific note so Tim knows to open
+      // the URL in FB proper and comment manually.
+      log.info('engage.comment.resolver_video', { commentId, canonicalFbPostId: resolved.canonicalFbPostId });
+      await db.engagePost.update({
+        where: { id: engagePost.id },
+        data: { canonicalFbPostId: resolved.canonicalFbPostId },
+      });
+      if (resolved.realFbPageId && engagePage.realFbPageId !== resolved.realFbPageId) {
+        await db.engagePage.update({
+          where: { id: engagePage.id },
+          data: { realFbPageId: resolved.realFbPageId },
+        });
+      }
+      await markCommentNeedsAttention(
+        db,
+        commentId,
+        engagePost.postUrl ?? null,
+        engagePage.name ?? null,
+        `REEL / VIDEO: ${resolved.reason}. Open the post URL in Facebook, comment manually as Tackle Room Fishing Supply.`,
+        resolved.body,
+      );
+      await job.updateProgress({ step: 'needs_attention_video' });
       return { ok: true };
     }
     effectiveFbPostId = resolved.canonicalFbPostId;
