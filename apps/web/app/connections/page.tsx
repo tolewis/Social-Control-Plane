@@ -630,7 +630,7 @@ function ConnectionsPageInner() {
                 <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Display name (optional)</span>
                 <input
                   type="text"
-                  placeholder={tokenModal.provider === 'instagram' ? 'e.g. @thetackleroom' : 'e.g. The Tackle Room'}
+                  placeholder={tokenModal.provider === 'instagram' ? 'e.g. @yourhandle' : 'e.g. Your Brand Name'}
                   value={tokenModal.displayName}
                   onChange={(e) => setTokenModal({ ...tokenModal, displayName: e.target.value })}
                 />

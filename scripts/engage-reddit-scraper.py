@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-Reddit post discovery for TackleRoom community engagement.
+Reddit post discovery for community engagement.
 
 Uses Reddit's public JSON endpoints — no API key, no PRAW, no auth.
 Discovers posts from target subreddits and submits to SCP engage API.
+
+Configuration (read from environment):
+    SCP_API_BASE       SCP API base URL (default: http://localhost:4001)
+    REDDIT_USER_AGENT  User-Agent header sent to Reddit (required — Reddit
+                       bans generic UAs). Format per Reddit API docs:
+                       "app-name/version (your contact info)"
 
 Usage:
     python3 engage-reddit-scraper.py [--limit N] [--dry-run] [--verbose]
@@ -24,8 +30,8 @@ import time
 
 import requests
 
-SCP_BASE = "http://localhost:4001"
-REDDIT_UA = "scp-engage/1.0 (community engagement for thetackleroom.com)"
+SCP_BASE = os.environ.get("SCP_API_BASE") or "http://localhost:4001"
+REDDIT_UA = os.environ.get("REDDIT_USER_AGENT") or "scp-engage/1.0 (set REDDIT_USER_AGENT in .env)"
 
 # Minimum thresholds — skip low-quality posts
 MIN_SCORE = 3          # at least 3 upvotes

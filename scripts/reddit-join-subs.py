@@ -1,20 +1,36 @@
 #!/usr/bin/env python3
-"""Join all target fishing subreddits as u/thetackleroom."""
+"""
+Join target subreddits via Playwright.
+
+Assisted (not fully automated): this launches a visible Chrome window,
+you log in manually, then it iterates the SUBS list and clicks Join on
+each. Edit SUBS below or set REDDIT_TARGET_SUBS env var (comma-separated)
+to override the default.
+
+Configuration (read from environment):
+    REDDIT_USERNAME     Username to log in as (used only in prompt text)
+    REDDIT_TARGET_SUBS  Comma-separated subreddit names (no r/ prefix)
+"""
+import os
 from playwright.sync_api import sync_playwright
 import time
 
-SUBS = [
+DEFAULT_SUBS = [
     'Fishing', 'saltwaterfishing', 'kayakfishing', 'Fishing_Gear',
     'SurfFishing', 'FloridaFishing', 'flyfishing', 'Offshore_Fishing',
     'FishingForBeginners',
 ]
+
+_env_subs = os.environ.get("REDDIT_TARGET_SUBS", "").strip()
+SUBS = [s.strip() for s in _env_subs.split(",") if s.strip()] if _env_subs else DEFAULT_SUBS
+REDDIT_USERNAME = os.environ.get("REDDIT_USERNAME") or "<your reddit user>"
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=False, channel='chrome', args=['--incognito'])
     ctx = browser.new_context(viewport={'width': 1280, 'height': 900})
     page = ctx.new_page()
     page.goto('https://www.reddit.com/login/', timeout=30000)
-    input('\n  Log in as u/thetackleroom, then press ENTER here... ')
+    input(f'\n  Log in as u/{REDDIT_USERNAME}, then press ENTER here... ')
 
     for sub in SUBS:
         print(f'  r/{sub}...', end=' ', flush=True)

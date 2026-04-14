@@ -146,7 +146,7 @@ export function UsersTab() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Katya, Tim Lewis"
+            placeholder="e.g. Agent Alpha, Jane Smith"
             required
           />
         </div>
