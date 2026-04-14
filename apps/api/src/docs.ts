@@ -84,6 +84,13 @@ const DOCS_MANIFEST: DocEntry[] = [
     filePath: path.join(REPO_ROOT, 'docs', 'Engage.md'),
   },
   {
+    slug: 'engage-agent-playbook',
+    title: 'Engage Agent Playbook',
+    group: 'Operations',
+    order: 4,
+    filePath: path.join(REPO_ROOT, 'docs', 'Engage-Agent-Playbook.md'),
+  },
+  {
     slug: 'agent-integration',
     title: 'Agent Integration (API)',
     group: 'Developer',
