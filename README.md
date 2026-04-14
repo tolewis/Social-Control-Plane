@@ -8,6 +8,24 @@ Desktop + mobile first
 Secrets: DB-encrypted (AES-256-GCM) with .env fallback
 Style direction: Contractor-AI-inspired layout/feel (not colors)
 
+## Quick start
+
+You want to run SCP on your machine, right now:
+
+1. **`docs/SETUP.md`** — prereqs, clone, `.env`, docker compose, prisma
+   migrate, first admin login. ~30 minutes.
+2. **`docs/Provider-Setup.md`** — create OAuth apps at LinkedIn, Meta, X,
+   Reddit, Discord with the exact scopes SCP needs. Per-provider.
+3. **`docs/Operating-Guide.md`** — PM2 commands, log locations, common
+   failure modes, queue management. Refer when things break.
+4. **`docs/Agent-Integration.md`** — API cookbook for scripts and bots.
+5. **`AGENTS.md`** — hard rules for AI coding assistants working in this
+   repo. Read it before letting any LLM touch the codebase.
+
+All of the above render inside the web UI itself via the **Docs** dock
+(sidebar nav) once you're logged in. Pick whichever reading surface you
+prefer — markdown files in the repo or in-app.
+
 ## Goal
 Build an agent-safe social publishing platform to replace the fragile parts of Postiz.
 

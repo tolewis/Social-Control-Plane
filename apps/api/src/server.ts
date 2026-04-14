@@ -2228,6 +2228,12 @@ import { registerEngageRoutes } from './engage.js';
 registerEngageRoutes(app, prisma, publishQueue);
 
 // ---------------------------------------------------------------------------
+// Docs routes (in-UI docs dock — serves markdown files from the repo)
+// ---------------------------------------------------------------------------
+import { registerDocsRoutes } from './docs.js';
+registerDocsRoutes(app);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 const port = Number(process.env.APP_PORT || 4001);

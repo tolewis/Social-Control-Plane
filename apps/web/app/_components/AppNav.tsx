@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   IconBolt,
+  IconBook,
   IconChat,
   IconCheckSquare,
   IconGauge,
@@ -59,6 +60,7 @@ const nav: NavItem[] = [
 ];
 
 const navBottom: NavItem[] = [
+  { label: 'Docs', href: '/docs', icon: IconBook },
   { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 

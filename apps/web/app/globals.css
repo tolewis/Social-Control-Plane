@@ -3584,3 +3584,322 @@ button:active, .chip:active, .listItem:active {
 @media (min-width: 981px) {
   .engageMobile { display: none; }
 }
+
+/* ============================================================
+   Docs dock — /docs route
+   Sidebar TOC on the left, markdown content on the right.
+   Collapsible sidebar on mobile.
+   ============================================================ */
+
+.docsDock {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 24px;
+  align-items: start;
+  min-height: calc(100vh - 130px);
+}
+
+.docsSidebarToggle {
+  display: none; /* shown on mobile only */
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.docsSidebar {
+  position: sticky;
+  top: 72px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 16px 22px;
+  box-shadow: var(--shadow);
+}
+
+.docsSidebarHeader {
+  padding-bottom: 14px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docsSidebarTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  letter-spacing: 0.01em;
+}
+
+.docsSidebarHint {
+  font-size: 0.78rem;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.docsSidebarLoading,
+.docsSidebarError {
+  font-size: 0.85rem;
+  padding: 6px 2px;
+}
+
+.docsSidebarError { color: var(--err); }
+
+.docsGroup {
+  margin-top: 14px;
+}
+
+.docsGroupLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 4px 6px;
+}
+
+.docsGroupList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docsGroupItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.docsGroupItem:hover {
+  background: var(--panel-2);
+}
+
+.docsGroupItem.active {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 650;
+  box-shadow: inset 3px 0 0 var(--accent, #4f8bf5);
+}
+
+.docsContent {
+  min-width: 0;
+  overflow-x: clip;
+  max-width: 100%;
+  padding: 4px 4px 60px;
+}
+
+.docsContentError {
+  color: var(--err);
+  font-size: 0.9rem;
+  padding: 8px 0;
+}
+
+.docsEmpty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.docsEmpty h1 {
+  margin: 0 0 10px;
+  font-size: 1.5rem;
+}
+
+.docsArticle {
+  max-width: 820px;
+  line-height: 1.65;
+}
+
+.docsArticleMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.docsArticle h1 {
+  font-size: 1.9rem;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  line-height: 1.2;
+}
+.docsArticle h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 36px 0 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  line-height: 1.25;
+}
+.docsArticle h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 24px 0 10px;
+  line-height: 1.3;
+}
+.docsArticle h4 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  margin: 18px 0 8px;
+}
+
+.docsArticle p,
+.docsArticle ul,
+.docsArticle ol {
+  margin: 12px 0;
+}
+
+.docsArticle ul,
+.docsArticle ol {
+  padding-left: 24px;
+}
+
+.docsArticle li {
+  margin: 6px 0;
+}
+
+.docsArticle li > p {
+  margin: 4px 0;
+}
+
+.docsArticle a {
+  color: #4f8bf5;
+  text-decoration: underline;
+  text-decoration-color: rgba(79, 139, 245, 0.35);
+  text-underline-offset: 2px;
+}
+.docsArticle a:hover {
+  text-decoration-color: currentColor;
+}
+
+.docsArticle code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.docsArticle pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 16px 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.docsArticle pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.docsArticle blockquote {
+  margin: 16px 0;
+  padding: 10px 16px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+  background: rgba(127, 127, 127, 0.05);
+}
+
+.docsArticle table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  font-size: 0.88rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.docsArticle thead {
+  background: var(--panel-2);
+}
+
+.docsArticle th,
+.docsArticle td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docsArticle th {
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.docsArticle hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+
+.docsArticle img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.docsArticle strong {
+  font-weight: 700;
+}
+
+.docsArticle em {
+  font-style: italic;
+}
+
+/* Mobile: stack, hide sidebar behind toggle */
+@media (max-width: 760px) {
+  .docsDock {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .docsSidebarToggle {
+    display: inline-block;
+  }
+  .docsSidebar {
+    position: static;
+    max-height: none;
+    display: none;
+    margin-bottom: 16px;
+  }
+  .docsSidebar.open {
+    display: block;
+  }
+  .docsContent {
+    padding: 4px 2px 60px;
+  }
+  .docsArticle h1 { font-size: 1.55rem; }
+  .docsArticle h2 { font-size: 1.2rem; margin-top: 28px; }
+  .docsArticle h3 { font-size: 1rem; }
+  .docsArticle pre { font-size: 0.78rem; padding: 12px; }
+}

@@ -13,6 +13,7 @@ import {
   IconBolt,
   IconCalendar,
   IconGear,
+  IconBook,
 } from './icons';
 import { ComposePanel } from './ComposePanel';
 
@@ -25,6 +26,7 @@ function titleForPath(pathname: string) {
   if (pathname.startsWith('/calendar')) return 'Calendar';
   if (pathname.startsWith('/connections')) return 'Connections';
   if (pathname.startsWith('/studio')) return 'Studio';
+  if (pathname.startsWith('/docs')) return 'Docs';
   if (pathname.startsWith('/settings')) return 'Settings';
   return 'Social Plane';
 }
@@ -36,6 +38,7 @@ const menuItems = [
   { label: 'Queue', href: '/queue', icon: IconQueue },
   { label: 'Studio', href: '/studio', icon: IconBolt },
   { label: 'Calendar', href: '/calendar', icon: IconCalendar },
+  { label: 'Docs', href: '/docs', icon: IconBook },
   { label: 'Settings', href: '/settings', icon: IconGear },
 ];
 

@@ -295,6 +295,36 @@ export function fetchJobs() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Docs (in-UI docs dock)                                            */
+/* ------------------------------------------------------------------ */
+
+export interface DocListEntry {
+  slug: string;
+  title: string;
+  group: string;
+  order: number;
+  size: number;
+  updatedAt: string;
+}
+
+export interface DocContent {
+  slug: string;
+  title: string;
+  group: string;
+  content: string;
+  size: number;
+  updatedAt: string;
+}
+
+export function fetchDocsList() {
+  return apiFetch<{ docs: DocListEntry[] }>('/docs');
+}
+
+export function fetchDoc(slug: string) {
+  return apiFetch<DocContent>(`/docs/${encodeURIComponent(slug)}`);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Provider configuration                                            */
 /* ------------------------------------------------------------------ */
 
