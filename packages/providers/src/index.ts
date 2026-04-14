@@ -801,6 +801,7 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
       'tweet.write',
       'users.read',
       'offline.access',
+      'media.write',
     ]);
 
     // code_verifier = state (deterministic; stateless adapter)
@@ -952,64 +953,33 @@ export class XAdapter implements ProviderAuthAdapter, ProviderPublishAdapter {
   }
 
   /**
-   * Upload image via X API v2 chunked upload (INIT → APPEND → FINALIZE).
-   * The v2 /2/media/upload endpoint requires this flow — simple multipart POSTs return 403.
-   * OAuth 2.0 Bearer tokens work for this endpoint with tweet.write scope.
+   * Upload image via X API v2 one-shot upload.
+   * For images, the current /2/media/upload schema expects multipart form data
+   * with `media` and `media_category`, not command-based INIT/APPEND/FINALIZE.
+   * OAuth 2.0 Bearer tokens for this endpoint need the media.write scope.
    */
   private async uploadImageMedia(m: MediaAttachment, accessToken: string): Promise<PublishResult> {
     const fileData = readFileSync(m.storagePath);
-    const totalBytes = fileData.length;
-    const authHeader = { authorization: `Bearer ${accessToken}` };
+    const form = new FormData();
+    form.append('media', new Blob([fileData], { type: m.mimeType }), m.originalName);
+    form.append('media_category', 'tweet_image');
+    if (m.mimeType) form.append('media_type', m.mimeType);
 
-    // Step 1: INIT
-    const initForm = new FormData();
-    initForm.append('command', 'INIT');
-    initForm.append('total_bytes', String(totalBytes));
-    initForm.append('media_type', m.mimeType);
-    initForm.append('media_category', 'tweet_image');
-
-    const initRes = await jsonFetch('https://api.x.com/2/media/upload', {
+    const uploadRes = await jsonFetch('https://api.x.com/2/media/upload', {
       method: 'POST',
-      headers: authHeader,
-      body: initForm,
+      headers: { authorization: `Bearer ${accessToken}` },
+      body: form,
     });
-    if (!initRes.ok) return initRes;
+    if (!uploadRes.ok) return uploadRes;
 
-    const mediaId = String(asRecord(initRes.body).media_id_string ?? asRecord(initRes.body).media_id ?? '');
-    if (!mediaId) return { ok: false, status: 500, body: { error: 'x_media_init_no_id', raw: initRes.body } };
-
-    // Step 2: APPEND (single segment for images under 5MB)
-    const appendForm = new FormData();
-    appendForm.append('command', 'APPEND');
-    appendForm.append('media_id', mediaId);
-    appendForm.append('segment_index', '0');
-    appendForm.append('media', new Blob([fileData], { type: m.mimeType }), m.originalName);
-
-    const appendRes = await fetch('https://api.x.com/2/media/upload', {
-      method: 'POST',
-      headers: authHeader,
-      body: appendForm,
-    });
-    // APPEND returns 204 No Content on success (no JSON body)
-    if (!appendRes.ok) {
-      const body = await appendRes.text().catch(() => 'no body');
-      return { ok: false, status: appendRes.status, body: { error: 'x_media_append_failed', raw: body } };
+    const uploadBody = asRecord(uploadRes.body);
+    const uploadData = asRecord(uploadBody.data);
+    const mediaId = String(uploadData.id ?? uploadBody.media_id_string ?? uploadBody.media_id ?? '');
+    if (!mediaId) {
+      return { ok: false, status: 500, body: { error: 'x_media_upload_missing_id', raw: uploadRes.body } };
     }
 
-    // Step 3: FINALIZE
-    const finalizeForm = new FormData();
-    finalizeForm.append('command', 'FINALIZE');
-    finalizeForm.append('media_id', mediaId);
-
-    const finalizeRes = await jsonFetch('https://api.x.com/2/media/upload', {
-      method: 'POST',
-      headers: authHeader,
-      body: finalizeForm,
-    });
-    if (!finalizeRes.ok) return finalizeRes;
-
-    // Return the finalize response which includes media_id_string
-    return { ok: true, status: 200, body: { media_id_string: mediaId, ...asRecord(finalizeRes.body) } };
+    return { ok: true, status: 200, body: { media_id_string: mediaId, ...uploadBody } };
   }
 
   /**

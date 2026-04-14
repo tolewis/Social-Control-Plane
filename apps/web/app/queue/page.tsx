@@ -104,7 +104,7 @@ export default function QueuePage() {
     setActionLoading(draftId);
     setActionError(null);
     try {
-      await publishDraft(draftId);
+      await publishDraft(draftId, { immediate: true });
       await Promise.all([refetchDrafts(), refetchJobs()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Retry failed');
@@ -131,7 +131,7 @@ export default function QueuePage() {
     setActionLoading(draftId);
     setActionError(null);
     try {
-      await publishDraft(draftId);
+      await publishDraft(draftId, { immediate: true });
       await Promise.all([refetchDrafts(), refetchJobs()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Publish failed');
@@ -371,7 +371,7 @@ export default function QueuePage() {
                                       </button>
                                       {(item.status === 'queued' || item.status === 'failed') && (
                                         <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleBackToDraft(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                          <IconRefresh width={16} height={16} /> Back to Draft
+                                          <IconRefresh width={16} height={16} /> {item.scheduledFor ? 'Remove Schedule' : 'Back to Draft'}
                                         </button>
                                       )}
                                       <button type="button" className="queueDeleteLink" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }}>
@@ -480,7 +480,7 @@ export default function QueuePage() {
                               </button>
                               {(item.status === 'queued' || item.status === 'failed') && (
                                 <button type="button" className="btn" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleBackToDraft(item.draftId); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                  <IconRefresh width={16} height={16} /> Back to Draft
+                                  <IconRefresh width={16} height={16} /> {item.scheduledFor ? 'Remove Schedule' : 'Back to Draft'}
                                 </button>
                               )}
                               <button type="button" className="queueDeleteLink" disabled={actionLoading === item.draftId} onClick={(e) => { e.stopPropagation(); handleCancel(item.draftId); }}>

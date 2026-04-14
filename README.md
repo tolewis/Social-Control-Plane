@@ -97,6 +97,7 @@ If you are integrating visual generation into another agent or app, start with `
 - Operator and API key management
 - Full mobile-responsive layout
 - Help/docs tab with per-provider setup guides and API reference
+- Internal playbook for repeatable social production, including reusable LinkedIn carousel rules and layout families (`docs/PLAYBOOK.md`)
 - Facebook community engagement system for page commenting:
   - target page registry
   - discovered post store
@@ -137,3 +138,6 @@ It exists for the workflow most social tools still handle badly:
 - human approval before something actually goes live
 
 That is the useful frame. Not "another scheduler," not a vague Postiz replacement, and not an AI-content toy.
+
+## Working docs
+- `docs/PLAYBOOK.md` — operating playbook for reusable social production patterns, including LinkedIn article-led carousel standards and layout-family rotation rules

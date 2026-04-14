@@ -20,7 +20,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
     devConsoleLabel: 'X Developer Console',
     oauthDocsUrl: 'https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code',
     credentialLabels: { clientId: 'OAuth 2.0 Client ID', clientSecret: 'Client Secret' },
-    scopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    scopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access', 'media.write'],
     setupSteps: [
       'Create a project and app at console.x.com',
       'Under User Authentication Settings, enable OAuth 2.0',
@@ -29,7 +29,7 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
       'Add the redirect URI shown below to your app\'s callback URLs',
       'Copy your OAuth 2.0 Client ID and Client Secret below',
     ],
-    notes: 'Access tokens expire after 2 hours. Refresh tokens last 6 months and are renewed automatically.',
+    notes: 'Access tokens expire after 2 hours. Refresh tokens last 6 months and are renewed automatically. Media posting also requires the media.write scope.',
   },
   linkedin: {
     displayName: 'LinkedIn',

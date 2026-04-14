@@ -1265,12 +1265,19 @@ app.post('/drafts/:id/back-to-draft', async (request, reply) => {
     });
   }
 
+  const nextStatus = existing.scheduledFor ? 'queued' : 'draft';
+
   const draft = await prisma.draft.update({
     where: { id: params.id },
-    data: { status: 'draft', updatedAt: new Date() },
+    data: { status: nextStatus, scheduledFor: null, updatedAt: new Date() },
   });
 
-  await audit('draft', draft.id, 'reverted_to_draft', { previousStatus: existing.status, jobsCanceled: pendingJobs.length });
+  await audit('draft', draft.id, existing.scheduledFor ? 'schedule_cleared' : 'reverted_to_draft', {
+    previousStatus: existing.status,
+    nextStatus,
+    jobsCanceled: pendingJobs.length,
+    scheduleCleared: Boolean(existing.scheduledFor),
+  });
 
   return { draft: draftToJson(draft as DraftRow) };
 });
@@ -1373,6 +1380,7 @@ app.post('/publish/:draftId', async (request, reply) => {
   const body = z
     .object({
       idempotencyKey: z.string().min(1).optional(),
+      immediate: z.boolean().optional().default(false),
     })
     .parse(request.body ?? {});
 
@@ -1382,7 +1390,7 @@ app.post('/publish/:draftId', async (request, reply) => {
   // --- Clean up stale jobs for THIS draft before rate-limiting ---
   // If the draft is in 'draft' or 'failed' status, any old PENDING/PROCESSING
   // jobs are stale leftovers from a previous cycle (edit reset, failed publish, etc).
-  if (draft.status === 'draft' || draft.status === 'failed') {
+  if (draft.status === 'draft' || draft.status === 'failed' || body.immediate) {
     const staleJobs = await prisma.publishJob.findMany({
       where: { draftId: draft.id, status: { in: ['PENDING', 'PROCESSING'] } },
     });
@@ -1466,7 +1474,9 @@ app.post('/publish/:draftId', async (request, reply) => {
   });
 
   // Calculate scheduled delay (if draft has a future scheduledFor).
-  const scheduledDelay = draft.scheduledFor
+  const scheduledDelay = body.immediate
+    ? 0
+    : draft.scheduledFor
     ? Math.max(0, new Date(draft.scheduledFor).getTime() - Date.now())
     : 0;
 

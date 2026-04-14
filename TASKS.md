@@ -54,7 +54,10 @@ Updated: 2026-04-06
 - [ ] Tag v1.0
 
 ## Post-1.0 backlog
+- [x] Document reusable LinkedIn carousel playbook with layout-family rotation rules so article-led batches do not look copy-pasted (`docs/PLAYBOOK.md`)
 - [ ] Smoke test a real X post with media attachment
+- [x] Resolve X media-upload failure for `@tolewis` — root cause was two-part: SCP was missing OAuth2 scope `media.write`, and its image uploader was still using command-based `INIT/APPEND/FINALIZE` against `POST /2/media/upload`. After reconnecting X with `media.write`, live probing showed image upload works as one-shot multipart form data (`media` + `media_category`) and command-based upload fails with X's schema error. Patched `packages/providers/src/index.ts`, redeployed `/opt/scp`, restarted `scp-api` + `scp-worker`, and verified success by publishing draft `cmnxyft3g0022jl58krmtd9wa` as X post `2043870044967285063` on 2026-04-13.
+- [x] Fix scheduling control edge cases in review/queue — scheduled queue items can now clear `scheduledFor` without leaving queue, `POST /publish/:draftId` accepts `immediate` so scheduled posts can still publish now, and the review/queue UI now exposes clear-schedule / remove-schedule behavior. Live `/opt/scp` rebuilt and PM2-restarted on 2026-04-13.
 - [ ] Capture one clean real product screenshot showing draft -> approval -> scheduled flow for docs and launch content
 - [ ] Implement agent API rate limiting per account
 - [ ] Add receipt persistence / delivery confirmation after publish

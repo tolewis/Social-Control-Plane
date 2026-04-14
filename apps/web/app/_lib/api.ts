@@ -248,7 +248,7 @@ export function createDraft(data: {
   });
 }
 
-export function updateDraft(id: string, data: Partial<Pick<DraftRecord, 'content' | 'scheduledFor' | 'publishMode' | 'mediaIds'>>) {
+export function updateDraft(id: string, data: Partial<Pick<DraftRecord, 'content' | 'publishMode' | 'mediaIds'>> & { scheduledFor?: string | null }) {
   return apiFetch<{ draft: DraftRecord }>(`/drafts/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -276,10 +276,13 @@ export function revertToDraft(id: string) {
 /*  Publish                                                           */
 /* ------------------------------------------------------------------ */
 
-export function publishDraft(draftId: string, idempotencyKey?: string) {
+export function publishDraft(draftId: string, options?: { idempotencyKey?: string; immediate?: boolean }) {
   return apiFetch<{ queued: boolean; draft: DraftRecord; job: PublishJobRecord }>(`/publish/${draftId}`, {
     method: 'POST',
-    body: JSON.stringify({ idempotencyKey }),
+    body: JSON.stringify({
+      idempotencyKey: options?.idempotencyKey,
+      immediate: options?.immediate ?? false,
+    }),
   });
 }
 

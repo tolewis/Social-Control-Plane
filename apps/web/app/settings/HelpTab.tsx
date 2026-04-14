@@ -82,11 +82,11 @@ function DocContent({ section }: { section: DocSection }) {
             <li>Select app type: <strong>Web App, Automated App, or Bot</strong> (Confidential Client).</li>
             <li>Set permissions to <strong>Read and write</strong>.</li>
             <li>Add the redirect URI shown on the Integrations tab to your app's callback URLs.</li>
-            <li>Required scopes: <code className="mono">tweet.read</code>, <code className="mono">tweet.write</code>, <code className="mono">users.read</code>, <code className="mono">offline.access</code>.</li>
+            <li>Required scopes: <code className="mono">tweet.read</code>, <code className="mono">tweet.write</code>, <code className="mono">users.read</code>, <code className="mono">offline.access</code>, <code className="mono">media.write</code>.</li>
             <li>Go to <strong>Settings → Integrations</strong>, find the X card, and enter your <strong>OAuth 2.0 Client ID</strong> and <strong>Client Secret</strong>.</li>
             <li>Click <strong>Connect X</strong> and authorize the app.</li>
           </ol>
-          <p className="helpNote">X uses OAuth 2.0 with PKCE. Access tokens expire after 2 hours, refresh tokens last 6 months. Social Plane refreshes automatically.</p>
+          <p className="helpNote">X uses OAuth 2.0 with PKCE. Access tokens expire after 2 hours, refresh tokens last 6 months. Social Plane refreshes automatically. Reconnect X after scope changes so the new token includes <code className="mono">media.write</code>.</p>
           <p className="helpNote">Env fallback: <code className="mono">X_API_KEY</code> / <code className="mono">X_API_SECRET</code></p>
         </div>
       );

@@ -166,6 +166,22 @@ export function ReviewConsole() {
     }
   }, [bulkSelected.size, reviewDrafts]);
 
+  const handleClearSchedule = useCallback(async () => {
+    if (!selected) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await updateDraft(selected.id, { scheduledFor: null });
+      setScheduleValue('');
+      setShowSchedule(false);
+      await refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Clear schedule failed');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [selected, refetch]);
+
   const handleDelete = useCallback(async () => {
     if (!selected) return;
     setActionLoading(true);
@@ -186,7 +202,7 @@ export function ReviewConsole() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await publishDraft(selected.id);
+      await publishDraft(selected.id, { immediate: true });
       setSelectedId(null);
       await refetch();
     } catch (err) {
@@ -304,10 +320,17 @@ export function ReviewConsole() {
             </div>
           </div>
         ) : (
-          <button type="button" className="expandTrigger" style={{ marginTop: 6 }} onClick={(e) => { e.stopPropagation(); setShowSchedule(true); }}>
-            <IconClock width={14} height={14} />
-            {draft.scheduledFor ? `Scheduled: ${new Date(draft.scheduledFor).toLocaleString()}` : 'Add schedule'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            <button type="button" className="expandTrigger" onClick={(e) => { e.stopPropagation(); setShowSchedule(true); }}>
+              <IconClock width={14} height={14} />
+              {draft.scheduledFor ? `Scheduled: ${new Date(draft.scheduledFor).toLocaleString()}` : 'Add schedule'}
+            </button>
+            {draft.scheduledFor && draft.id === selected.id && (
+              <button type="button" className="btn ghost" onClick={(e) => { e.stopPropagation(); handleClearSchedule(); }} disabled={actionLoading}>
+                Clear schedule
+              </button>
+            )}
+          </div>
         )}
 
         {/* Actions */}
@@ -471,10 +494,17 @@ export function ReviewConsole() {
               </div>
             </div>
           ) : (
-            <button type="button" className="expandTrigger" style={{ marginTop: 8 }} onClick={() => setShowSchedule(true)}>
-              <IconClock width={14} height={14} />
-              {selected.scheduledFor ? `Scheduled: ${new Date(selected.scheduledFor).toLocaleString()}` : 'Add schedule'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+              <button type="button" className="expandTrigger" onClick={() => setShowSchedule(true)}>
+                <IconClock width={14} height={14} />
+                {selected.scheduledFor ? `Scheduled: ${new Date(selected.scheduledFor).toLocaleString()}` : 'Add schedule'}
+              </button>
+              {selected.scheduledFor && (
+                <button type="button" className="btn ghost" onClick={handleClearSchedule} disabled={actionLoading}>
+                  Clear schedule
+                </button>
+              )}
+            </div>
           )}
 
           <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
