@@ -128,23 +128,38 @@ async function main(): Promise<void> {
       stack: err?.stack,
     });
 
-    // Dead-letter alerting — POST to webhook on failure (Discord-compatible)
+    // Dead-letter alerting — POST to webhook on failure (Discord-compatible).
+    // Only fire on the FINAL attempt (no more retries coming) so we don't
+    // page Tim twice for the same transient failure. Tight one-liner:
+    // never dumps Prisma invocation diagnostics or full stack traces into
+    // Discord — those stay in the worker log. Discord gets the job kind,
+    // a short ID, the failure reason trimmed, and a timestamp.
     const webhookUrl = process.env.ALERT_WEBHOOK_URL;
     if (webhookUrl && job) {
-      const data = job.data as Record<string, unknown>;
-      const msg = [
-        `**[SCP] Publish failed**`,
-        `Job: \`${job.id?.slice(0, 12)}\` (attempt ${job.attemptsMade}/3)`,
-        data?.draftId ? `Draft: \`${String(data.draftId).slice(0, 12)}\`` : '',
-        `Error: ${err?.message ?? 'unknown'}`,
-        `Time: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}`,
-      ].filter(Boolean).join('\n');
+      const maxAttempts = job.opts?.attempts ?? 3;
+      const isFinalAttempt = job.attemptsMade >= maxAttempts;
+      if (isFinalAttempt) {
+        const rawErr = err?.message ?? 'unknown';
+        // Strip multi-line Prisma "Invalid db.X.update() invocation in ..."
+        // splats down to the first meaningful line. If the error is just a
+        // simple string, pass it through.
+        const firstLine = rawErr.split('\n')[0]
+          .replace(/^Invalid db\.[a-zA-Z.]+\(\) invocation.*$/, 'prisma_client_stale (see worker log)')
+          .slice(0, 200);
+        const shortTime = new Date().toLocaleTimeString('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const msg =
+          `[SCP] ${job.name} failed — ${firstLine} (job ${job.id?.slice(0, 8)} @ ${shortTime})`;
 
-      fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: msg }),
-      }).catch(e => log.error('alert.webhook.failed', { err: (e as Error).message }));
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: msg }),
+        }).catch(e => log.error('alert.webhook.failed', { err: (e as Error).message }));
+      }
     }
   });
   worker.on('error', (err) =>

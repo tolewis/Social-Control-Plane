@@ -839,3 +839,28 @@ export function markEngageCommentPosted(
     body: JSON.stringify(body ?? {}),
   });
 }
+
+export type EngageConfigRecord = {
+  id: string;
+  platform: 'facebook' | 'reddit' | string;
+  enabled: boolean;
+  perRunCap: number;
+  runsPerDay: number;
+  updatedAt: string;
+  updatedBy: string | null;
+  createdAt: string;
+};
+
+export function fetchEngageConfigs(): Promise<{ configs: EngageConfigRecord[] }> {
+  return apiFetch('/engage/config');
+}
+
+export function updateEngageConfig(
+  platform: string,
+  body: { enabled?: boolean; perRunCap?: number; runsPerDay?: number; updatedBy?: string },
+): Promise<{ config: EngageConfigRecord }> {
+  return apiFetch(`/engage/config/${platform}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}

@@ -94,6 +94,58 @@ export function registerEngageRoutes(
   }
 
   // -----------------------------------------------------------------------
+  // Config — per-platform live settings (enabled, perRunCap, runsPerDay).
+  //
+  // Read by the runners at every timer fire and by the /engage UI settings
+  // bar. Tim or Bill can flip enabled / change the cap via PUT without
+  // touching env vars or systemd. runsPerDay is advisory only — the actual
+  // schedule lives in systemd user timers. (If the operator wants to
+  // actually change cadence, they edit the .timer file and `systemctl
+  // --user daemon-reload`; `runsPerDay` just mirrors that choice so the
+  // UI can show the intended frequency and the runner can report it in
+  // the digest.)
+  // -----------------------------------------------------------------------
+
+  app.get('/engage/config', async () => {
+    const configs = await prisma.engageConfig.findMany({ orderBy: { platform: 'asc' } });
+    return { configs };
+  });
+
+  app.get('/engage/config/:platform', async (request, reply) => {
+    const { platform } = request.params as { platform: string };
+    const config = await prisma.engageConfig.findUnique({ where: { platform } });
+    if (!config) return reply.code(404).send({ error: 'config_not_found', platform });
+    return { config };
+  });
+
+  app.put('/engage/config/:platform', async (request, reply) => {
+    const { platform } = request.params as { platform: string };
+    const body = z.object({
+      enabled: z.boolean().optional(),
+      perRunCap: z.number().int().min(0).max(100).optional(),
+      runsPerDay: z.number().int().min(0).max(96).optional(),
+      updatedBy: z.string().optional(),
+    }).parse(request.body ?? {});
+
+    const existing = await prisma.engageConfig.findUnique({ where: { platform } });
+    if (!existing) return reply.code(404).send({ error: 'config_not_found', platform });
+
+    const data: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.enabled !== undefined) data.enabled = body.enabled;
+    if (body.perRunCap !== undefined) data.perRunCap = body.perRunCap;
+    if (body.runsPerDay !== undefined) data.runsPerDay = body.runsPerDay;
+    if (body.updatedBy !== undefined) data.updatedBy = body.updatedBy;
+
+    const config = await prisma.engageConfig.update({ where: { platform }, data });
+    await audit('EngageConfig', config.id, 'updated', {
+      platform,
+      changes: body,
+      updatedBy: body.updatedBy ?? 'operator',
+    });
+    return { config };
+  });
+
+  // -----------------------------------------------------------------------
   // Pages — target communities (Facebook pages + Reddit subreddits)
   // -----------------------------------------------------------------------
 
@@ -541,12 +593,17 @@ export function registerEngageRoutes(
     });
     if (!comment) return reply.code(404).send({ error: 'comment_not_found' });
 
-    const allowedFrom = ['pending_review', 'approved', 'failed'];
+    // Mark Posted is valid from any non-terminal state the operator could
+    // reasonably be looking at: normal review queue (pending_review),
+    // approved-but-not-yet-worker-posted (approved), worker-failed (failed),
+    // and the new Action Required inbox (needs_attention — for reels,
+    // permission gates, or anywhere Tim handled it manually in FB/Reddit).
+    const allowedFrom = ['pending_review', 'needs_attention', 'approved', 'failed'];
     if (!allowedFrom.includes(comment.status)) {
       return reply.code(400).send({
         error: 'comment_not_markable',
         status: comment.status,
-        message: `Only pending_review/approved/failed comments can be marked posted (current: ${comment.status})`,
+        message: `Only ${allowedFrom.join('/')} comments can be marked posted (current: ${comment.status})`,
       });
     }
 

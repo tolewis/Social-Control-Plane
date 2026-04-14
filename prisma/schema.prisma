@@ -209,6 +209,25 @@ model EngagePost {
   @@index([discoveredAt])
 }
 
+// Per-platform engage settings. Singleton rows keyed by platform name —
+// the runners (fb_engage_review_runner, reddit_engage_review_runner) read
+// their own row at startup to decide whether to run at all (`enabled`),
+// how many comments to attempt (`perRunCap`), and what cadence to report
+// in the digest (`runsPerDay` — advisory, the actual systemd timer lives
+// in ~/.config/systemd/user/ and is the source of truth for schedule).
+// Writable via /engage/config API so Tim and Bill can toggle from the
+// /engage UI or from a Discord command without touching systemd.
+model EngageConfig {
+  id         String   @id @default(cuid())
+  platform   String   @unique                 // "facebook" | "reddit"
+  enabled    Boolean  @default(true)          // kill switch — false pauses the runner
+  perRunCap  Int      @default(8)             // comments to attempt per timer fire
+  runsPerDay Int      @default(4)             // advisory: how many times the timer fires daily
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+}
+
 model EngageComment {
   id            String     @id @default(cuid())
   engagePostId  String

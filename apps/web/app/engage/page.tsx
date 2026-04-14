@@ -7,8 +7,11 @@ import {
   approveEngageComment,
   rejectEngageComment,
   markEngageCommentPosted,
+  fetchEngageConfigs,
+  updateEngageConfig,
   type EngageCommentRecord,
   type EngagePostRecord,
+  type EngageConfigRecord,
 } from '../_lib/api';
 
 type StatusFilter =
@@ -133,6 +136,35 @@ export default function EngagePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [configs, setConfigs] = useState<EngageConfigRecord[]>([]);
+  const [configSaving, setConfigSaving] = useState<string | null>(null);
+
+  const refetchConfigs = useCallback(() => {
+    fetchEngageConfigs()
+      .then(r => setConfigs(r.configs))
+      .catch(() => { /* silent — bar will just show defaults */ });
+  }, []);
+
+  useEffect(() => {
+    refetchConfigs();
+  }, [refetchConfigs]);
+
+  const handleConfigSave = useCallback(
+    async (platform: string, patch: { enabled?: boolean; perRunCap?: number; runsPerDay?: number }) => {
+      setConfigSaving(platform);
+      setActionError(null);
+      try {
+        const r = await updateEngageConfig(platform, { ...patch, updatedBy: 'operator' });
+        setConfigs(prev => prev.map(c => (c.platform === platform ? r.config : c)));
+        setToast(`${platform} settings saved`);
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : `Failed to save ${platform} config`);
+      } finally {
+        setConfigSaving(null);
+      }
+    },
+    [],
+  );
 
   // Auto-clear toast after 2.5s
   useEffect(() => {
@@ -275,6 +307,20 @@ export default function EngagePage() {
             <div className="label">Active Pages</div>
             <div className="value">{stats.activePages}</div>
           </div>
+        </div>
+      )}
+
+      {/* ---- Engage settings bar — per-platform on/off + per-run cap ---- */}
+      {configs.length > 0 && (
+        <div className="engageSettingsBar">
+          {configs.map(cfg => (
+            <EngageConfigRow
+              key={cfg.platform}
+              config={cfg}
+              saving={configSaving === cfg.platform}
+              onSave={patch => handleConfigSave(cfg.platform, patch)}
+            />
+          ))}
         </div>
       )}
 
@@ -500,7 +546,9 @@ function CommentRow({
               <button
                 className="btn sm"
                 disabled={isLoading}
-                title={manual ? 'Mark this comment as posted manually on the platform' : 'Mark posted (manual fallback)'}
+                title={manual
+                  ? 'You posted this manually on Reddit — mark it done in SCP'
+                  : 'You posted this manually on Facebook (reel, permission gate, etc.) — mark it done in SCP'}
                 onClick={() => onMarkPosted(c.id)}
               >
                 {isLoading ? '...' : 'Mark Posted'}
@@ -753,7 +801,9 @@ function ExpandedContent({
             <button
               className="btn sm"
               disabled={isLoading}
-              title={manual ? 'You posted this manually — mark it done in SCP' : 'Mark posted manually (fallback when the worker cannot post)'}
+              title={manual
+                ? 'You posted this manually on Reddit — mark it done in SCP'
+                : 'You posted this manually on Facebook (reel, permission gate, etc.) — mark it done in SCP'}
               onClick={() => onMarkPosted(c.id)}
             >
               {isLoading ? '...' : 'Mark Posted'}
@@ -792,6 +842,85 @@ function ExpandedContent({
           {platform === 'reddit' ? 'Reddit' : platform} has no API — click "Copy & Open", paste, post manually, then "Mark Posted".
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Engage settings bar row — per-platform on/off + cap + runs/day      */
+/* ------------------------------------------------------------------ */
+
+function EngageConfigRow({
+  config,
+  saving,
+  onSave,
+}: {
+  config: EngageConfigRecord;
+  saving: boolean;
+  onSave: (patch: { enabled?: boolean; perRunCap?: number; runsPerDay?: number }) => Promise<void>;
+}) {
+  const [cap, setCap] = useState(String(config.perRunCap));
+  const [runs, setRuns] = useState(String(config.runsPerDay));
+
+  // Keep local inputs in sync when the parent fetches a fresh config
+  // (e.g. after save or another client update).
+  useEffect(() => {
+    setCap(String(config.perRunCap));
+    setRuns(String(config.runsPerDay));
+  }, [config.perRunCap, config.runsPerDay]);
+
+  const dirty =
+    Number(cap) !== config.perRunCap || Number(runs) !== config.runsPerDay;
+
+  const platformLabel = config.platform === 'facebook' ? 'Facebook' : config.platform === 'reddit' ? 'Reddit' : config.platform;
+
+  return (
+    <div className={`engageConfigRow ${config.enabled ? '' : 'paused'}`}>
+      <div className="engageConfigPlatform">
+        <strong>{platformLabel}</strong>
+      </div>
+
+      <label className="engageConfigToggle" title={config.enabled ? 'Click to pause this engage cycle' : 'Click to resume'}>
+        <input
+          type="checkbox"
+          checked={config.enabled}
+          disabled={saving}
+          onChange={e => onSave({ enabled: e.target.checked })}
+        />
+        <span>{config.enabled ? 'Enabled' : 'Paused'}</span>
+      </label>
+
+      <label className="engageConfigField">
+        <span>Per-run cap</span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={cap}
+          disabled={saving || !config.enabled}
+          onChange={e => setCap(e.target.value)}
+        />
+      </label>
+
+      <label className="engageConfigField" title="Advisory display only — the actual schedule is owned by systemd timers.">
+        <span>Runs/day</span>
+        <input
+          type="number"
+          min={0}
+          max={96}
+          value={runs}
+          disabled={saving || !config.enabled}
+          onChange={e => setRuns(e.target.value)}
+        />
+      </label>
+
+      <button
+        className="btn sm"
+        disabled={saving || !dirty}
+        onClick={() => onSave({ perRunCap: Number(cap), runsPerDay: Number(runs) })}
+      >
+        {saving ? '...' : 'Save'}
+      </button>
     </div>
   );
 }

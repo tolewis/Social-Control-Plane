@@ -3496,6 +3496,74 @@ button:active, .chip:active, .listItem:active {
 }
 .engagePostLink:hover { text-decoration: underline; }
 
+/* Engage settings bar — compact per-platform row above the tab chips.
+   Each row has an on/off toggle, per-run cap, runs/day, and save. When
+   `enabled=false` the row gets a muted look so it's obvious at a glance
+   that platform is paused. */
+.engageSettingsBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.engageConfigRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.engageConfigRow:last-child { border-bottom: none; }
+.engageConfigRow.paused { opacity: 0.65; }
+.engageConfigPlatform {
+  min-width: 86px;
+  font-size: 0.92rem;
+  text-transform: capitalize;
+}
+.engageConfigToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  user-select: none;
+}
+.engageConfigToggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ok, #22c55e);
+}
+.engageConfigField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.engageConfigField input[type="number"] {
+  width: 56px;
+  padding: 4px 6px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: right;
+}
+.engageConfigField input[type="number"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (max-width: 640px) {
+  .engageConfigRow { gap: 10px; }
+  .engageConfigPlatform { min-width: 0; flex: 1 1 100%; }
+}
+
 /* Banner shown inside an expanded comment row when its status is
    `needs_attention` — the Graph API resolver determined we can't comment
    on that target yet (usually because TackleRoom needs to Like/Follow
