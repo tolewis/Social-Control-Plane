@@ -481,9 +481,23 @@ export function registerEngageRoutes(
 
     const comment = await prisma.engageComment.findUnique({ where: { id } });
     if (!comment) return reply.code(404).send({ error: 'comment_not_found' });
-    if (comment.status !== 'pending_review') {
+    // Allow reject from pending_review AND needs_attention. The operator's
+    // "move on, this one's not worth it" button has to work from both the
+    // normal review queue and the Action Required inbox.
+    if (comment.status !== 'pending_review' && comment.status !== 'needs_attention') {
       return reply.code(400).send({ error: 'comment_not_pending', status: comment.status });
     }
+
+    // Preserve any existing rejectionNote (e.g. the resolver's "REEL / VIDEO"
+    // or "Like/Follow" banner text) by appending the operator's reason rather
+    // than overwriting it. Null note = operator clicked reject without typing.
+    const composedNote = body.rejectionNote
+      ? (comment.rejectionNote
+          ? `${comment.rejectionNote}\n[rejected] ${body.rejectionNote}`
+          : `[rejected] ${body.rejectionNote}`)
+      : (comment.rejectionNote
+          ? `${comment.rejectionNote}\n[rejected]`
+          : '[rejected]');
 
     await prisma.engageComment.update({
       where: { id },
@@ -491,7 +505,7 @@ export function registerEngageRoutes(
         status: 'rejected',
         reviewedBy: body.reviewedBy ?? 'unknown',
         reviewedAt: new Date(),
-        rejectionNote: body.rejectionNote,
+        rejectionNote: composedNote,
         updatedAt: new Date(),
       },
     });
@@ -499,6 +513,7 @@ export function registerEngageRoutes(
     await audit('EngageComment', id, 'rejected', {
       reviewedBy: body.reviewedBy,
       reason: body.rejectionNote,
+      previousStatus: comment.status,
     });
 
     return { comment: { id, status: 'rejected' } };
