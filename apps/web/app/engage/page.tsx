@@ -11,11 +11,19 @@ import {
   type EngagePostRecord,
 } from '../_lib/api';
 
-type StatusFilter = 'all' | 'pending_review' | 'approved' | 'posted' | 'rejected' | 'failed';
+type StatusFilter =
+  | 'all'
+  | 'pending_review'
+  | 'needs_attention'
+  | 'approved'
+  | 'posted'
+  | 'rejected'
+  | 'failed';
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'pending_review', label: 'Pending' },
+  { value: 'needs_attention', label: 'Action Required' },
   { value: 'approved', label: 'Approved' },
   { value: 'posted', label: 'Posted' },
   { value: 'rejected', label: 'Rejected' },
@@ -25,6 +33,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 function statusTone(status: string): 'ok' | 'warn' | 'err' | 'neutral' | 'info' {
   switch (status) {
     case 'pending_review': return 'warn';
+    case 'needs_attention': return 'warn';
     case 'approved': return 'info';
     case 'posted': return 'ok';
     case 'rejected': return 'neutral';
@@ -37,6 +46,7 @@ function statusTone(status: string): 'ok' | 'warn' | 'err' | 'neutral' | 'info' 
 function statusLabel(status: string): string {
   switch (status) {
     case 'pending_review': return 'pending';
+    case 'needs_attention': return 'needs you';
     default: return status;
   }
 }
@@ -445,7 +455,7 @@ function CommentRow({
   const pageName = c.engagePost?.engagePage?.name ?? '—';
   const platform = c.engagePost?.engagePage?.platform;
   const postText = c.engagePost?.postText ?? '';
-  const isPending = c.status === 'pending_review';
+  const isPending = c.status === 'pending_review' || c.status === 'needs_attention';
   const isApprovedManual = c.status === 'approved' && isManualPlatform(platform);
   const isPosted = c.status === 'posted';
   const isLoading = actionLoading === c.id;
@@ -605,7 +615,8 @@ function ExpandedContent({
   actionLoading, rejectingId, setRejectingId, rejectNote, setRejectNote,
   editingId, editText, setEditText, setEditingId,
 }: Omit<CommentRowProps, 'expanded' | 'onToggle'>) {
-  const isPending = c.status === 'pending_review';
+  const isPending = c.status === 'pending_review' || c.status === 'needs_attention';
+  const isNeedsAttention = c.status === 'needs_attention';
   const isPosted = c.status === 'posted';
   const isLoading = actionLoading === c.id;
   const postText = c.engagePost?.postText ?? '';
@@ -676,8 +687,36 @@ function ExpandedContent({
         </div>
       )}
 
-      {/* Rejection note */}
-      {c.rejectionNote && (
+      {/* Needs Attention banner — worker Graph API resolver flagged this
+          comment as blocked by Facebook. Operator needs to click through,
+          Like/Follow the target page, then re-approve. */}
+      {isNeedsAttention && (
+        <div className="needsAttentionBanner">
+          <strong>Action required.</strong>{' '}
+          {c.rejectionNote || 'This post needs manual review before Bill can comment.'}
+          {postUrl && (
+            <div style={{ marginTop: 6 }}>
+              <a
+                href={postUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="engagePostLink"
+              >
+                Open post on Facebook &#8599;
+              </a>
+              {pageName && (
+                <span className="subtle" style={{ marginLeft: 8 }}>
+                  Like the &ldquo;{pageName}&rdquo; page as Tackle Room, then hit Approve.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Rejection note — only show for truly rejected comments, not for
+          needs_attention (that banner already renders the note above). */}
+      {c.rejectionNote && !isNeedsAttention && (
         <div style={{ marginTop: 8, fontSize: '0.82rem', color: 'var(--err)' }}>
           Rejected: {c.rejectionNote}
         </div>

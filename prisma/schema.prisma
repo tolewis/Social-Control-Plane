@@ -158,37 +158,52 @@ model ProviderConfig {
 // ---------------------------------------------------------------------------
 
 model EngagePage {
-  id          String   @id @default(cuid())
-  fbPageId    String   @unique          // FB numeric ID or Reddit subreddit name (e.g. "r/Fishing")
-  platform    String   @default("facebook") // "facebook" | "reddit"
-  name        String
-  category    String   @default("community") // community, brand, charter, media, subreddit
-  enabled     Boolean  @default(true)
-  lastScanned DateTime?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  posts       EngagePost[]
+  id           String    @id @default(cuid())
+  fbPageId     String    @unique          // FB numeric ID or Reddit subreddit name (e.g. "r/Fishing")
+  platform     String    @default("facebook") // "facebook" | "reddit"
+  name         String
+  category     String    @default("community") // community, brand, charter, media, subreddit
+  enabled      Boolean   @default(true)
+  lastScanned  DateTime?
+  // Canonical Graph API page id learned by the worker resolver. Often
+  // differs from `fbPageId` (which is the legacy user-migration ID the
+  // mbasic scraper captures). Populated on first successful comment.
+  realFbPageId String?
+  // Set whenever the worker successfully posts a comment targeting a
+  // post on this page. Drives rotation: runners prefer pages with
+  // null or oldest lastPostedAt so Bill doesn't hammer the same 8
+  // pages every run.
+  lastPostedAt DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  posts        EngagePost[]
 
   @@index([platform])
+  @@index([lastPostedAt])
 }
 
 model EngagePost {
-  id            String          @id @default(cuid())
-  engagePageId  String
-  engagePage    EngagePage      @relation(fields: [engagePageId], references: [id])
-  fbPostId      String          @unique
-  postUrl       String?
-  postText      String?         @db.Text
-  authorName    String?
-  postedAt      DateTime?
-  likeCount     Int?
-  commentCount  Int?
-  shareCount    Int?
-  discoveredAt  DateTime        @default(now())
-  commented     Boolean         @default(false)
-  skippedReason String?
-  comments      EngageComment[]
+  id                String          @id @default(cuid())
+  engagePageId      String
+  engagePage        EngagePage      @relation(fields: [engagePageId], references: [id])
+  fbPostId          String          @unique
+  // Graph-confirmed canonical post id. Set once by the worker resolver on
+  // the first comment attempt; subsequent attempts read this and skip the
+  // resolver GET. Often differs from `fbPostId` because the scraper stores
+  // the mbasic legacy owner id, not the canonical page id Graph wants.
+  canonicalFbPostId String?
+  postUrl           String?
+  postText          String?         @db.Text
+  authorName        String?
+  postedAt          DateTime?
+  likeCount         Int?
+  commentCount      Int?
+  shareCount        Int?
+  discoveredAt      DateTime        @default(now())
+  commented         Boolean         @default(false)
+  skippedReason     String?
+  comments          EngageComment[]
 
   @@index([engagePageId])
   @@index([discoveredAt])
@@ -203,7 +218,7 @@ model EngageComment {
   kbSources     String[]
   slopScore     Int        @default(0)
   status        String     @default("pending_review")
-  // pending_review | approved | rejected | posted | failed | expired
+  // pending_review | needs_attention | approved | rejected | posted | failed | expired
   reviewedBy    String?
   reviewedAt    DateTime?
   rejectionNote String?

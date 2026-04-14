@@ -790,7 +790,12 @@ export type EngagePostRecord = {
   discoveredAt: string;
   commented: boolean;
   targetStatus?: EngageTargetStatus;
-  engagePage?: { name: string; category: string; platform?: string };
+  engagePage?: {
+    name: string;
+    category: string;
+    platform?: string;
+    lastPostedAt?: string | null;
+  };
 };
 
 export function fetchEngagePosts(commented?: boolean, limit?: number): Promise<{ posts: EngagePostRecord[] }> {

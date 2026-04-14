@@ -34,8 +34,80 @@ function describeApiFailure(status: number, body: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Facebook comment posting
+// Facebook Graph API: resolve canonical post id + post comment
 // ---------------------------------------------------------------------------
+//
+// The mbasic scraper captures `content_owner_id_new` from HTML, which for
+// many pages is a legacy user-migration id, NOT Facebook's canonical Graph
+// page id. Commenting against that mbasic id returns code=100 subcode=33
+// or code=200 "Permissions error" for a significant fraction of targets.
+//
+// The fix: before POSTing a comment, call GET {fbPostId}?fields=id,from
+// with the page access token. Graph returns the canonical id and the
+// canonical from.id — cache both, then comment against the canonical id.
+// On subsequent retries of the same EngagePost, the cached canonical id
+// lets us skip the GET entirely.
+//
+// When the resolver GET itself returns code=100 subcode=33 (post genuinely
+// unreadable by this page token), we flip the comment to `needs_attention`
+// so the operator can click through, Like/Follow the target page on
+// Facebook, then re-approve. We do NOT auto-blacklist pages.
+
+type ResolveResult =
+  | { kind: 'ok'; canonicalFbPostId: string; realFbPageId: string | null }
+  | { kind: 'needs_attention'; reason: string; body: unknown }
+  | { kind: 'retry'; reason: string; body: unknown };
+
+async function resolveCanonicalFbPostId(
+  accessToken: string,
+  fbPostId: string,
+): Promise<ResolveResult> {
+  const url =
+    `https://graph.facebook.com/v20.0/${encodeURIComponent(fbPostId)}` +
+    `?fields=id,from&access_token=${encodeURIComponent(accessToken)}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'GET' });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { kind: 'retry', reason: `network:${msg}`, body: null };
+  }
+
+  const body = await res.json().catch(() => ({ _raw: 'non_json_response' }));
+
+  if (res.ok) {
+    const id = (body as { id?: string }).id;
+    const fromId = (body as { from?: { id?: string } }).from?.id ?? null;
+    if (!id) {
+      return { kind: 'retry', reason: 'resolver_missing_id', body };
+    }
+    return { kind: 'ok', canonicalFbPostId: id, realFbPageId: fromId };
+  }
+
+  const err = (body as { error?: { code?: number; error_subcode?: number; message?: string } }).error;
+  const code = err?.code;
+
+  // Graph API transient / rate-limit-ish errors → let BullMQ retry with backoff.
+  // - 5xx: server trouble
+  // - code 4: application request limit reached
+  // - code 17: user request limit reached
+  // - code 32: page request limit reached
+  // - code 613: calls to this api have exceeded the rate limit
+  if (res.status >= 500 || code === 4 || code === 17 || code === 32 || code === 613) {
+    return { kind: 'retry', reason: describeApiFailure(res.status, body), body };
+  }
+
+  // Permission / object-access errors that indicate the page token simply
+  // cannot see or comment on this post:
+  // - code 100 (with or without subcode 33): "Story does not exist" / "Object does not exist"
+  // - code 200: "Permissions error" — page not allowed to interact
+  // - code 10:  "Application does not have permission for this action"
+  // All of these → surface as needs_attention so the operator can resolve
+  // (Like/Follow the target page, or mark the post dead). Anything else
+  // unknown also falls through to needs_attention rather than silent retry.
+  return { kind: 'needs_attention', reason: describeApiFailure(res.status, body), body };
+}
 
 async function postFacebookComment(
   accessToken: string,
@@ -114,9 +186,74 @@ export async function handleEngageComment(
 
   await job.updateProgress({ step: 'token_ready' });
 
+  // Fetch the comment → post → page chain with separate findUnique calls
+  // so we can read/cache canonicalFbPostId, realFbPageId, and update
+  // lastPostedAt. Three cheap lookups instead of one nested include.
+  const commentRow = await db.engageComment.findUnique({ where: { id: commentId } });
+  if (!commentRow) {
+    log.error('engage.comment.row_not_found', { commentId });
+    return { ok: true };
+  }
+  const engagePost = await db.engagePost.findUnique({ where: { id: commentRow.engagePostId } });
+  if (!engagePost) {
+    log.error('engage.comment.post_not_found', { commentId, engagePostId: commentRow.engagePostId });
+    await markCommentFailed(db, commentId, 'engage_post_not_found', { engagePostId: commentRow.engagePostId });
+    return { ok: true };
+  }
+  const engagePage = await db.engagePage.findUnique({ where: { id: engagePost.engagePageId } });
+  if (!engagePage) {
+    log.error('engage.comment.page_not_found', { commentId, engagePageId: engagePost.engagePageId });
+    await markCommentFailed(db, commentId, 'engage_page_not_found', { engagePageId: engagePost.engagePageId });
+    return { ok: true };
+  }
+
+  // Use the cached canonical id if the resolver already ran on a previous
+  // attempt. First-ever comment on a post → call the resolver now.
+  let effectiveFbPostId = engagePost.canonicalFbPostId ?? fbPostId;
+  if (!engagePost.canonicalFbPostId) {
+    const resolved = await resolveCanonicalFbPostId(accessToken, fbPostId);
+    if (resolved.kind === 'retry') {
+      log.warn('engage.comment.resolver_retry', { commentId, reason: resolved.reason });
+      // Throw so BullMQ applies exponential backoff + retries (3 attempts configured).
+      throw new Error(`engage.resolver.retry: ${resolved.reason}`);
+    }
+    if (resolved.kind === 'needs_attention') {
+      log.info('engage.comment.resolver_needs_attention', { commentId, reason: resolved.reason });
+      await markCommentNeedsAttention(
+        db,
+        commentId,
+        engagePost.postUrl ?? null,
+        engagePage.name ?? null,
+        resolved.reason,
+        resolved.body,
+      );
+      await job.updateProgress({ step: 'needs_attention' });
+      return { ok: true };
+    }
+    effectiveFbPostId = resolved.canonicalFbPostId;
+    // Persist the canonical post id so retries skip this GET next time.
+    await db.engagePost.update({
+      where: { id: engagePost.id },
+      data: { canonicalFbPostId: resolved.canonicalFbPostId },
+    });
+    // Persist the canonical page id on the page if it's new or different.
+    if (resolved.realFbPageId && engagePage.realFbPageId !== resolved.realFbPageId) {
+      await db.engagePage.update({
+        where: { id: engagePage.id },
+        data: { realFbPageId: resolved.realFbPageId },
+      });
+    }
+    log.info('engage.comment.resolver_ok', {
+      commentId,
+      scraperFbPostId: fbPostId,
+      canonicalFbPostId: resolved.canonicalFbPostId,
+      realFbPageId: resolved.realFbPageId,
+    });
+  }
+
   let result: { ok: boolean; status: number; body: unknown };
   try {
-    result = await postFacebookComment(accessToken, fbPostId, commentText);
+    result = await postFacebookComment(accessToken, effectiveFbPostId, commentText);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error('engage.comment.network_error', { commentId, err: msg });
@@ -139,33 +276,64 @@ export async function handleEngageComment(
           updatedAt: new Date(),
         },
       }),
-      db.engageComment.findUnique({ where: { id: commentId } }).then(async (comment) => {
-        if (comment) {
-          await db.engagePost.update({
-            where: { id: comment.engagePostId },
-            data: { commented: true },
-          });
-        }
+      db.engagePost.update({
+        where: { id: engagePost.id },
+        data: { commented: true },
+      }),
+      // Rotation signal: record that we successfully posted a comment on
+      // this page. Runners use lastPostedAt to spread future comments
+      // across the registry instead of hammering the same pages.
+      db.engagePage.update({
+        where: { id: engagePage.id },
+        data: { lastPostedAt: new Date() },
       }),
       db.auditEvent.create({
         data: {
           entityType: 'EngageComment',
           entityId: commentId,
           action: 'posted',
-          payload: { fbPostId, fbCommentId, status: result.status },
+          payload: { fbPostId, canonicalFbPostId: effectiveFbPostId, fbCommentId, status: result.status },
         },
       }),
     ]);
 
-    log.info('engage.comment.posted', { commentId, fbCommentId, fbPostId });
+    log.info('engage.comment.posted', { commentId, fbCommentId, fbPostId, canonicalFbPostId: effectiveFbPostId });
     await job.updateProgress({ step: 'succeeded' });
   } else {
+    const error = result.body && typeof result.body === 'object'
+      ? (result.body as { error?: { code?: number; error_subcode?: number } }).error
+      : undefined;
+
+    // Post-time permission / object-access errors. These happen when the
+    // resolver succeeded (we confirmed we could READ the post) but the
+    // actual comment POST is rejected — usually because the target page
+    // moderates who can comment. Codes:
+    // - 100: "Story does not exist" / "Object does not exist"
+    // - 200: "(#200) Permissions error"
+    // - 10:  "Application does not have permission for this action"
+    // All of these → surface as needs_attention so the operator can
+    // Like/Follow the target page and re-approve, not a silent failure.
+    if (error?.code === 100 || error?.code === 200 || error?.code === 10) {
+      log.info('engage.comment.post_time_needs_attention', {
+        commentId,
+        status: result.status,
+        code: error?.code,
+      });
+      await markCommentNeedsAttention(
+        db,
+        commentId,
+        engagePost.postUrl ?? null,
+        engagePage.name ?? null,
+        describeApiFailure(result.status, result.body),
+        result.body,
+      );
+      await job.updateProgress({ step: 'needs_attention' });
+      return { ok: true };
+    }
+
     log.error('engage.comment.api_error', { commentId, status: result.status, body: result.body });
     await markCommentFailed(db, commentId, describeApiFailure(result.status, result.body), result.body);
 
-    const error = result.body && typeof result.body === 'object'
-      ? (result.body as { error?: { code?: number } }).error
-      : undefined;
     if (error?.code === 190) {
       await db.socialConnection.update({
         where: { id: connectionId },
@@ -197,6 +365,49 @@ async function markCommentFailed(
           entityId: commentId,
           action: 'failed',
           payload: { reason, receiptJson: receiptJson ?? undefined },
+        },
+      }),
+    ]);
+  } catch {
+    // Best effort
+  }
+}
+
+// Surface a comment the operator needs to act on (Like/Follow the target
+// page on Facebook, then re-approve). Not the same as 'failed' — the
+// /engage UI renders these under an "Action Required" filter with a
+// clickable post link, and the approve button stays enabled so the
+// operator can re-enqueue after Liking the page.
+async function markCommentNeedsAttention(
+  db: DbClient,
+  commentId: string,
+  postUrl: string | null,
+  pageName: string | null,
+  apiReason: string,
+  receiptJson: unknown,
+): Promise<void> {
+  const note =
+    `Page likely needs TackleRoom Fishing Supply to Like/Follow before Bill can comment. ` +
+    `Open the post${postUrl ? ` (${postUrl})` : ''}, Like the${pageName ? ` "${pageName}"` : ''} page ` +
+    `on Facebook as Tackle Room, then return here and hit Approve. ` +
+    `Graph API said: ${apiReason}`;
+  try {
+    await Promise.all([
+      db.engageComment.update({
+        where: { id: commentId },
+        data: {
+          status: 'needs_attention',
+          rejectionNote: note,
+          receiptJson: receiptJson ?? undefined,
+          updatedAt: new Date(),
+        },
+      }),
+      db.auditEvent.create({
+        data: {
+          entityType: 'EngageComment',
+          entityId: commentId,
+          action: 'needs_attention',
+          payload: { reason: apiReason, pageName, postUrl },
         },
       }),
     ]);

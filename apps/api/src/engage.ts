@@ -140,6 +140,56 @@ export function registerEngageRoutes(
     return reply.code(204).send();
   });
 
+  // Bulk insert — for registry expansion. Load 100s or 1000s of pages
+  // from a CSV/JSON in one shot, skipping duplicates on fbPageId.
+  app.post('/engage/pages/bulk', async (request, reply) => {
+    const body = z.object({
+      pages: z
+        .array(
+          z.object({
+            fbPageId: z.string().min(1),
+            name: z.string().min(1),
+            platform: z.enum(['facebook', 'reddit']).default('facebook'),
+            category: z.string().default('community'),
+            notes: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(2000),
+    }).parse(request.body);
+
+    let created = 0;
+    let skipped = 0;
+    for (const p of body.pages) {
+      try {
+        await prisma.engagePage.create({
+          data: {
+            fbPageId: p.fbPageId,
+            name: p.name,
+            platform: p.platform,
+            category: p.category,
+            notes: p.notes,
+          },
+        });
+        created += 1;
+      } catch (err) {
+        // P2002 = unique constraint violation (duplicate fbPageId). Skip.
+        if ((err as { code?: string }).code === 'P2002') {
+          skipped += 1;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    await audit('EngagePage', 'bulk', 'bulk-created', {
+      created,
+      skipped,
+      total: body.pages.length,
+    });
+    return reply.code(201).send({ created, skipped, total: body.pages.length });
+  });
+
   // -----------------------------------------------------------------------
   // Posts — discovered Facebook posts worth commenting on
   // -----------------------------------------------------------------------
@@ -241,7 +291,16 @@ export function registerEngageRoutes(
       where,
       orderBy: { discoveredAt: 'desc' },
       take: Math.min(Number(limit) || 50, 100),
-      include: { engagePage: { select: { name: true, category: true, platform: true } } },
+      include: {
+        engagePage: {
+          select: {
+            name: true,
+            category: true,
+            platform: true,
+            lastPostedAt: true,
+          },
+        },
+      },
     });
     return { posts: posts.map((post) => withTargetStatus(post)) };
   });
@@ -321,7 +380,12 @@ export function registerEngageRoutes(
       include: { engagePost: { include: { engagePage: true } } },
     });
     if (!comment) return reply.code(404).send({ error: 'comment_not_found' });
-    if (comment.status !== 'pending_review') {
+    // Accept approvals from both pending_review and needs_attention. The
+    // latter is for comments where the worker's Graph API resolver hit a
+    // permission gate; once the operator has Liked the target page, they
+    // can re-approve and the worker's cached canonicalFbPostId makes the
+    // retry a clean post.
+    if (comment.status !== 'pending_review' && comment.status !== 'needs_attention') {
       return reply.code(400).send({ error: 'comment_not_pending', status: comment.status });
     }
 

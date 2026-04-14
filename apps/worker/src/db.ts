@@ -155,6 +155,7 @@ export interface EngagePostRow {
   id: string;
   engagePageId: string;
   fbPostId: string;
+  canonicalFbPostId: string | null;
   postUrl: string | null;
   postText: string | null;
   authorName: string | null;
@@ -165,6 +166,21 @@ export interface EngagePostRow {
   discoveredAt: Date;
   commented: boolean;
   skippedReason: string | null;
+}
+
+export interface EngagePageRow {
+  id: string;
+  fbPageId: string;
+  platform: string;
+  name: string;
+  category: string;
+  enabled: boolean;
+  lastScanned: Date | null;
+  realFbPageId: string | null;
+  lastPostedAt: Date | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface DbClient {
@@ -179,6 +195,7 @@ export interface DbClient {
   };
   engageComment: ModelDelegate<EngageCommentRow>;
   engagePost: ModelDelegate<EngagePostRow>;
+  engagePage: ModelDelegate<EngagePageRow>;
   auditEvent: { create(args: { data: Record<string, unknown> }): Promise<unknown> };
   $disconnect(): Promise<void>;
 }

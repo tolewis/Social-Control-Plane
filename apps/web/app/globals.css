@@ -3495,6 +3495,27 @@ button:active, .chip:active, .listItem:active {
   margin-left: auto;
 }
 .engagePostLink:hover { text-decoration: underline; }
+
+/* Banner shown inside an expanded comment row when its status is
+   `needs_attention` — the Graph API resolver determined we can't comment
+   on that target yet (usually because TackleRoom needs to Like/Follow
+   the target page first). Operator clicks through to Facebook, handles
+   the Like, then re-approves. */
+.needsAttentionBanner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.needsAttentionBanner strong {
+  color: var(--warn);
+  margin-right: 4px;
+}
 .engageOriginalPost {
   padding: 12px;
   background: var(--panel);
