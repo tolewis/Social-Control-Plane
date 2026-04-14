@@ -25,11 +25,26 @@ function pillForStatus(status: QueueStatus) {
 }
 
 function deriveStatus(draft: DraftRecord, jobs: PublishJobRecord[]): QueueStatus {
-  const job = jobs.find((j) => j.draftId === draft.id);
-  const jobStatus = job?.status?.toUpperCase();
-  if (jobStatus === 'SUCCEEDED') return 'succeeded';
-  if (jobStatus === 'PROCESSING') return 'running';
-  if (jobStatus === 'FAILED' || draft.status === 'failed') return 'failed';
+  // Draft status is ground truth for successful publishes — the worker
+  // flips draft.status to 'published' atomically when a job succeeds, and
+  // once published the post is out there forever. Check this first so
+  // later PENDING/CANCELED jobs for the same draft don't mask a prior
+  // success. (Fixed 2026-04-13: previously `jobs.find()` returned an
+  // arbitrary non-latest job and reported published posts as 'queued'.)
+  if (draft.status === 'published') return 'succeeded';
+  if (draft.status === 'failed') return 'failed';
+
+  // Pick the MOST RECENT job for this draft. The /jobs API returns in
+  // descending createdAt order, but sort explicitly to be defensive
+  // against ordering changes.
+  const draftJobs = jobs
+    .filter((j) => j.draftId === draft.id)
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  const latestStatus = draftJobs[0]?.status?.toUpperCase();
+
+  if (latestStatus === 'SUCCEEDED') return 'succeeded';
+  if (latestStatus === 'PROCESSING') return 'running';
+  if (latestStatus === 'FAILED') return 'failed';
   if (draft.status === 'draft') return 'needs review';
   return 'queued';
 }

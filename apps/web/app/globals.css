@@ -281,12 +281,21 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  /* overflow-x: clip — clips horizontal overflow WITHOUT creating a scroll
+     container. `overflow-x: hidden` would work visually but breaks
+     position: sticky on descendants (notably .topBar on mobile) because
+     it promotes .mainCol into an implicit scroll containing block, and
+     the sticky anchor then belongs to .mainCol — which does not itself
+     scroll — instead of the viewport. Browser support: Chrome 90+,
+     Safari 16+, Firefox 81+. Fixed 2026-04-13. */
+  overflow-x: clip;
 }
 
 .page {
   padding: 22px 22px 96px;
-  overflow-x: hidden;
+  /* Same reasoning as .mainCol: use `clip` not `hidden` so sticky
+     descendants still anchor to the viewport. */
+  overflow-x: clip;
   max-width: 100%;
 }
 
