@@ -25,7 +25,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <div className="brand">
                 <div className="brandMark" aria-hidden>&#9678;</div>
                 <div className="brandText">
-                  <div className="brandName">Social Plane</div>
+                  {/* Split wordmark: "Social" in body text, "Plane" in the
+                      brand accent (amber). Matches the type treatment used
+                      by Epic Inventory ("Epic" accent) and Contractor-AI
+                      ("-AI" accent). */}
+                  <div className="brandName">
+                    Social <span className="brandAccent">Plane</span>
+                  </div>
                 </div>
               </div>
 

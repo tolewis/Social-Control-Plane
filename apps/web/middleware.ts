@@ -9,6 +9,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/backend/') ||
     pathname.startsWith('/favicon') ||
+    pathname.startsWith('/fonts/') ||
     pathname.startsWith('/integrations/')
   ) {
     return NextResponse.next();

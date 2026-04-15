@@ -1,3 +1,18 @@
+/* ---------- Display font (Outfit, variable) ---------- */
+/* Self-hosted to match the type treatment used in sibling Tim Lewis
+   projects (Epic Inventory, Contractor-AI). Same WOFF2 file, same
+   axis range, same font-display=swap. Lets us share the split-color
+   wordmark pattern across the whole product family while each brand
+   keeps its own accent color. */
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/Outfit-Variable.woff2') format('woff2-variations'),
+       url('/fonts/Outfit-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ---------- Dark theme (default) ---------- */
 :root,
 [data-theme="dark"] {
@@ -15,6 +30,13 @@
   --accent: #a1a1aa;
   --accent-2: #71717a;
   --cyan: #a1a1aa;
+
+  /* Brand accent — amber. Warm, signal-like (control plane metaphor),
+     reads clearly against zinc neutral, deliberately NOT the AI cyan
+     Tim killed and NOT the royal blue from TackleRoom. Sibling brand
+     accents: Epic Inventory "signal", Contractor-AI "volt". */
+  --brand-accent: #fbbf24;
+  --brand-accent-soft: rgba(251, 191, 36, 0.14);
 
   --ok: #4ade80;
   --warn: #facc15;
@@ -51,6 +73,10 @@
   --accent: #18181b;
   --accent-2: #52525b;
   --cyan: #18181b;
+
+  /* Deeper amber for light mode so it stays readable on white. */
+  --brand-accent: #d97706;
+  --brand-accent-soft: rgba(217, 119, 6, 0.12);
 
   --ok: #16a34a;
   --warn: #ca8a04;
@@ -137,16 +163,29 @@ a {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--brand-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--brand-accent) 35%, transparent);
   box-shadow: var(--shadow);
-  color: var(--text);
+  color: var(--brand-accent);
   font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
+/* Display wordmark — matches the Outfit / tracking-tight / split-color
+   pattern used by Epic Inventory and Contractor-AI. "Social" stays in
+   body text color, "Plane" gets the brand accent (amber) so there's a
+   clear anchor word that reads as the product name. */
 .brandName {
-  font-weight: 720;
-  letter-spacing: 0.01em;
+  font-family: 'Outfit', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--text);
+}
+.brandName .brandAccent {
+  color: var(--brand-accent);
 }
 
 .brandSub {
@@ -320,9 +359,10 @@ a {
 }
 
 .topBarTitle {
-  font-size: 1.02rem;
-  font-weight: 720;
-  letter-spacing: 0.01em;
+  font-family: 'Outfit', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .topBarMeta {
