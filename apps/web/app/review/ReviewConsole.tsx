@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StatusPill, type Tone } from '../_components/ui';
 import { ProviderIcon, IconClock } from '../_components/icons';
 import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
 import { DateTimePicker } from '../_components/DateTimePicker';
+import { Pagination } from '../_components/Pagination';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { publishDraft, deleteDraft, updateDraft, publishBulk } from '../_lib/api';
@@ -65,9 +66,26 @@ function SlopDetail({ result }: { result: SlopResult }) {
 }
 
 export function ReviewConsole() {
-  const { drafts, loading, error, refetch } = useDrafts();
   const { connections } = useConnections();
   const [channelFilter, setChannelFilter] = useChannelFilter();
+
+  // Server-side pagination. Status filter is always 'draft' on this page —
+  // the backend /drafts route handles it directly so we don't ship every
+  // queued/published row to the client just to filter it client-side.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Whenever the channel filter or page size changes, reset to page 1 —
+  // otherwise we could land on an empty page 7 after narrowing the scope.
+  useEffect(() => { setPage(1); }, [channelFilter, pageSize]);
+
+  const { drafts, total, loading, error, refetch } = useDrafts({
+    status: 'draft',
+    connectionId: channelFilter || undefined,
+    page,
+    pageSize,
+  });
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -80,11 +98,10 @@ export function ReviewConsole() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
 
-  // Only show drafts that need review (status === 'draft'), filtered by channel
-  const reviewDrafts = useMemo(
-    () => drafts.filter((d) => d.status === 'draft' && (!channelFilter || d.connectionId === channelFilter)),
-    [drafts, channelFilter],
-  );
+  // Server already filtered by status='draft' + optional connectionId,
+  // so `reviewDrafts` is just the paginated slice as-is.
+  const reviewDrafts = drafts;
+  const totalDrafts = total ?? reviewDrafts.length;
 
   // Memoize slop detection — compute once per draft content, not per render
   const slopCache = useMemo(() => {
@@ -373,6 +390,16 @@ export function ReviewConsole() {
           {bulkResult && <span style={{ fontSize: 12, color: bulkResult.includes('error') ? 'var(--err)' : 'var(--ok)' }}>{bulkResult}</span>}
         </div>
       )}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalDrafts}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        label="drafts"
+        disabled={loading}
+      />
 
       <div className="split desktopOnly">
         <div className="list" aria-label="Drafts">

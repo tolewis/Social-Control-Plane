@@ -329,32 +329,66 @@ export function registerEngageRoutes(
   });
 
   app.get('/engage/posts', async (request) => {
-    const { engagePageId, commented, limit } = request.query as {
-      engagePageId?: string;
-      commented?: string;
-      limit?: string;
-    };
-    const where: Record<string, unknown> = {};
-    if (engagePageId) where.engagePageId = engagePageId;
-    if (commented === 'true') where.commented = true;
-    if (commented === 'false') where.commented = false;
+    // Supports three shapes:
+    //   ?limit=50                         → legacy, returns { posts }
+    //   ?page=1&pageSize=25               → paginated, returns { posts, total, page, pageSize }
+    //   (no params)                       → default paginated view, page 1 / size 25
+    const q = z.object({
+      engagePageId: z.string().optional(),
+      commented: z.enum(['true', 'false']).optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      pageSize: z.coerce.number().int().min(1).max(200).optional(),
+    }).parse(request.query);
 
-    const posts = await prisma.engagePost.findMany({
-      where,
-      orderBy: { discoveredAt: 'desc' },
-      take: Math.min(Number(limit) || 50, 100),
-      include: {
-        engagePage: {
-          select: {
-            name: true,
-            category: true,
-            platform: true,
-            lastPostedAt: true,
-          },
+    const where: Record<string, unknown> = {};
+    if (q.engagePageId) where.engagePageId = q.engagePageId;
+    if (q.commented === 'true') where.commented = true;
+    if (q.commented === 'false') where.commented = false;
+
+    const include = {
+      engagePage: {
+        select: {
+          name: true,
+          category: true,
+          platform: true,
+          lastPostedAt: true,
         },
       },
-    });
-    return { posts: posts.map((post) => withTargetStatus(post)) };
+    };
+
+    // Legacy `?limit=` path — keep working for any existing clients.
+    if (q.limit !== undefined && q.page === undefined && q.pageSize === undefined) {
+      const posts = await prisma.engagePost.findMany({
+        where,
+        orderBy: { discoveredAt: 'desc' },
+        take: q.limit,
+        include,
+      });
+      return { posts: posts.map((post) => withTargetStatus(post)) };
+    }
+
+    // Paginated path. Defaults to page 1, pageSize 25 — matches Tim's
+    // "next 25" UX ask (2026-04-14 evening).
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 25;
+    const skip = (page - 1) * pageSize;
+    const [posts, total] = await Promise.all([
+      prisma.engagePost.findMany({
+        where,
+        orderBy: { discoveredAt: 'desc' },
+        skip,
+        take: pageSize,
+        include,
+      }),
+      prisma.engagePost.count({ where }),
+    ]);
+    return {
+      posts: posts.map((post) => withTargetStatus(post)),
+      total,
+      page,
+      pageSize,
+    };
   });
 
   // -----------------------------------------------------------------------
@@ -389,30 +423,68 @@ export function registerEngageRoutes(
   });
 
   app.get('/engage/comments', async (request) => {
-    const { status, limit } = request.query as { status?: string; limit?: string };
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    // Same shape contract as /engage/posts:
+    //   ?limit=50                   → legacy { comments }
+    //   ?page=1&pageSize=25         → { comments, total, page, pageSize }
+    //   (no params)                 → default paginated, page 1 / size 25
+    const q = z.object({
+      status: z.string().optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      pageSize: z.coerce.number().int().min(1).max(200).optional(),
+    }).parse(request.query);
 
-    const comments = await prisma.engageComment.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(Number(limit) || 50, 100),
-      include: {
-        engagePost: {
-          select: {
-            fbPostId: true,
-            postUrl: true,
-            postText: true,
-            engagePage: { select: { name: true, platform: true } },
-          },
+    const where: Record<string, unknown> = {};
+    if (q.status) where.status = q.status;
+
+    const include = {
+      engagePost: {
+        select: {
+          fbPostId: true,
+          postUrl: true,
+          postText: true,
+          engagePage: { select: { name: true, platform: true } },
         },
       },
-    });
+    };
+
+    // Legacy limit-only path
+    if (q.limit !== undefined && q.page === undefined && q.pageSize === undefined) {
+      const comments = await prisma.engageComment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: q.limit,
+        include,
+      });
+      return {
+        comments: comments.map((comment) => ({
+          ...comment,
+          engagePost: comment.engagePost ? withTargetStatus(comment.engagePost) : comment.engagePost,
+        })),
+      };
+    }
+
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 25;
+    const skip = (page - 1) * pageSize;
+    const [comments, total] = await Promise.all([
+      prisma.engageComment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include,
+      }),
+      prisma.engageComment.count({ where }),
+    ]);
     return {
       comments: comments.map((comment) => ({
         ...comment,
         engagePost: comment.engagePost ? withTargetStatus(comment.engagePost) : comment.engagePost,
       })),
+      total,
+      page,
+      pageSize,
     };
   });
 

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { StatusPill } from '../_components/ui';
+import { Pagination } from '../_components/Pagination';
 import { useEngageComments, useEngagePosts, useEngageStats } from '../hooks/useEngage';
 import {
   approveEngageComment,
@@ -125,8 +126,39 @@ export default function EngagePage() {
     }
     return 'all';
   });
-  const { comments, loading, error, refetch } = useEngageComments(filter === 'all' ? undefined : filter);
-  const { posts: discoveredPosts, loading: postsLoading, refetch: refetchPosts } = useEngagePosts();
+  // Independent pagination for the two tabs — they load from different
+  // endpoints and have different default views, so one shared page/size
+  // pair wouldn't make sense.
+  const [commentsPage, setCommentsPage] = useState(1);
+  const [commentsPageSize, setCommentsPageSize] = useState(25);
+  const [postsPage, setPostsPage] = useState(1);
+  const [postsPageSize, setPostsPageSize] = useState(25);
+
+  // Reset to page 1 whenever the relevant filter/size changes, so
+  // switching from "Action Required" to "All" doesn't land on page 7.
+  useEffect(() => { setCommentsPage(1); }, [filter, commentsPageSize]);
+  useEffect(() => { setPostsPage(1); }, [postsPageSize]);
+
+  const {
+    comments,
+    total: commentsTotal,
+    loading,
+    error,
+    refetch,
+  } = useEngageComments({
+    status: filter === 'all' ? undefined : filter,
+    page: commentsPage,
+    pageSize: commentsPageSize,
+  });
+  const {
+    posts: discoveredPosts,
+    total: postsTotal,
+    loading: postsLoading,
+    refetch: refetchPosts,
+  } = useEngagePosts({
+    page: postsPage,
+    pageSize: postsPageSize,
+  });
   const { stats, refetch: refetchStats } = useEngageStats();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -359,6 +391,16 @@ export default function EngagePage() {
       {/* ============ COMMENTS TAB ============ */}
       {tab === 'comments' && (
         <>
+          <Pagination
+            page={commentsPage}
+            pageSize={commentsPageSize}
+            total={commentsTotal ?? comments.length}
+            onPageChange={setCommentsPage}
+            onPageSizeChange={setCommentsPageSize}
+            label="comments"
+            disabled={loading}
+          />
+
           {loading && <p className="subtle">Loading...</p>}
           {error && <p style={{ color: 'var(--err)' }}>{error}</p>}
 
@@ -447,6 +489,16 @@ export default function EngagePage() {
       {/* ============ POSTS TAB ============ */}
       {tab === 'posts' && (
         <>
+          <Pagination
+            page={postsPage}
+            pageSize={postsPageSize}
+            total={postsTotal ?? discoveredPosts.length}
+            onPageChange={setPostsPage}
+            onPageSizeChange={setPostsPageSize}
+            label="posts"
+            disabled={postsLoading}
+          />
+
           {postsLoading && <p className="subtle">Loading posts...</p>}
 
           {!postsLoading && discoveredPosts.length === 0 && (

@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StatusPill } from '../_components/ui';
 import { ProviderIcon, IconRetry, IconTrash, IconSend, IconEdit, IconClock, IconRefresh } from '../_components/icons';
 import { MediaThumbs, MediaToolbar } from '../_components/MediaPicker';
 import { DateTimePicker } from '../_components/DateTimePicker';
+import { Pagination } from '../_components/Pagination';
 import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { useJobs } from '../hooks/useJobs';
@@ -68,11 +69,27 @@ type QueueItem = {
 };
 
 export default function QueuePage() {
-  const { drafts, loading: draftLoading, error: draftError, refetch: refetchDrafts } = useDrafts();
+  // Queue merges drafts + jobs client-side, so we load a generous slice
+  // from each endpoint (pageSize=200) and paginate the merged items
+  // client-side. 200 × 200 is comfortably more than any realistic day of
+  // queue activity but still bounds the backend response.
+  const { drafts, loading: draftLoading, error: draftError, refetch: refetchDrafts } = useDrafts({
+    page: 1,
+    pageSize: 200,
+  });
   const { connections, loading: connLoading } = useConnections();
-  const { jobs, loading: jobLoading, refetch: refetchJobs } = useJobs();
+  const { jobs, loading: jobLoading, refetch: refetchJobs } = useJobs({
+    page: 1,
+    pageSize: 200,
+  });
   const [channelFilter, setChannelFilter] = useChannelFilter();
   const [filter, setFilter] = useState<QueueStatus | 'all'>('all');
+  const [queuePage, setQueuePage] = useState(1);
+  const [queuePageSize, setQueuePageSize] = useState(25);
+
+  // Reset page to 1 whenever filters or page size change so we don't
+  // land on an empty trailing page after narrowing the scope.
+  useEffect(() => { setQueuePage(1); }, [channelFilter, filter, queuePageSize]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -114,6 +131,12 @@ export default function QueuePage() {
     if (filter !== 'all') filtered = filtered.filter(i => i.status === filter);
     return filtered;
   }, [drafts, connections, jobs, filter, channelFilter]);
+
+  const totalItems = items.length;
+  const pagedItems = useMemo(() => {
+    const start = (queuePage - 1) * queuePageSize;
+    return items.slice(start, start + queuePageSize);
+  }, [items, queuePage, queuePageSize]);
 
   const handleRetry = useCallback(async (draftId: string) => {
     setActionLoading(draftId);
@@ -269,6 +292,16 @@ export default function QueuePage() {
         </div>
       ) : (
         <>
+          <Pagination
+            page={queuePage}
+            pageSize={queuePageSize}
+            total={totalItems}
+            onPageChange={setQueuePage}
+            onPageSizeChange={setQueuePageSize}
+            label="items"
+            disabled={loading}
+          />
+
           {/* Desktop table */}
           <div className="tableWrap desktopOnly">
             <table className="table">
@@ -281,7 +314,7 @@ export default function QueuePage() {
                   <th>Status</th>
                 </tr>
               </thead>
-                {items.map((item) => {
+                {pagedItems.map((item) => {
                   const isExpanded = expandedId === item.fullId;
                   return (
                     <tbody key={item.fullId}>
@@ -411,7 +444,7 @@ export default function QueuePage() {
 
           {/* Mobile card list */}
           <div className="mobileOnly" style={{ gap: 12 }}>
-            {items.map((item) => {
+            {pagedItems.map((item) => {
               const isExpanded = expandedId === item.fullId;
               return (
                 <div

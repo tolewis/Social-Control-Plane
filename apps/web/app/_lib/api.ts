@@ -227,8 +227,26 @@ export function refreshConnection(id: string) {
 /*  Drafts                                                            */
 /* ------------------------------------------------------------------ */
 
-export function fetchDrafts() {
-  return apiFetch<{ drafts: DraftRecord[] }>('/drafts');
+export interface PaginatedDrafts {
+  drafts: DraftRecord[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchDrafts(opts?: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  connectionId?: string;
+}): Promise<PaginatedDrafts> {
+  const params = new URLSearchParams();
+  if (opts?.page !== undefined) params.set('page', String(opts.page));
+  if (opts?.pageSize !== undefined) params.set('pageSize', String(opts.pageSize));
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.connectionId) params.set('connectionId', opts.connectionId);
+  const qs = params.toString();
+  return apiFetch<PaginatedDrafts>(`/drafts${qs ? `?${qs}` : ''}`);
 }
 
 export function fetchDraft(id: string) {
@@ -290,8 +308,26 @@ export function publishDraft(draftId: string, options?: { idempotencyKey?: strin
 /*  Jobs                                                              */
 /* ------------------------------------------------------------------ */
 
-export function fetchJobs() {
-  return apiFetch<{ jobs: PublishJobRecord[] }>('/jobs');
+export interface PaginatedJobs {
+  jobs: PublishJobRecord[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchJobs(opts?: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  connectionId?: string;
+}): Promise<PaginatedJobs> {
+  const params = new URLSearchParams();
+  if (opts?.page !== undefined) params.set('page', String(opts.page));
+  if (opts?.pageSize !== undefined) params.set('pageSize', String(opts.pageSize));
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.connectionId) params.set('connectionId', opts.connectionId);
+  const qs = params.toString();
+  return apiFetch<PaginatedJobs>(`/jobs${qs ? `?${qs}` : ''}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -798,18 +834,46 @@ export type EngagePostRecord = {
   };
 };
 
-export function fetchEngagePosts(commented?: boolean, limit?: number): Promise<{ posts: EngagePostRecord[] }> {
-  const params = new URLSearchParams();
-  if (commented !== undefined) params.set('commented', String(commented));
-  if (limit) params.set('limit', String(limit));
-  return apiFetch(`/engage/posts?${params}`);
+export interface PaginatedEngagePosts {
+  posts: EngagePostRecord[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
 }
 
-export function fetchEngageComments(status?: string, limit?: number): Promise<{ comments: EngageCommentRecord[] }> {
+export function fetchEngagePosts(opts?: {
+  commented?: boolean;
+  page?: number;
+  pageSize?: number;
+  engagePageId?: string;
+}): Promise<PaginatedEngagePosts> {
   const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (limit) params.set('limit', String(limit));
-  return apiFetch(`/engage/comments?${params}`);
+  if (opts?.commented !== undefined) params.set('commented', String(opts.commented));
+  if (opts?.page !== undefined) params.set('page', String(opts.page));
+  if (opts?.pageSize !== undefined) params.set('pageSize', String(opts.pageSize));
+  if (opts?.engagePageId) params.set('engagePageId', opts.engagePageId);
+  const qs = params.toString();
+  return apiFetch(`/engage/posts${qs ? `?${qs}` : ''}`);
+}
+
+export interface PaginatedEngageComments {
+  comments: EngageCommentRecord[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchEngageComments(opts?: {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<PaginatedEngageComments> {
+  const params = new URLSearchParams();
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.page !== undefined) params.set('page', String(opts.page));
+  if (opts?.pageSize !== undefined) params.set('pageSize', String(opts.pageSize));
+  const qs = params.toString();
+  return apiFetch(`/engage/comments${qs ? `?${qs}` : ''}`);
 }
 
 export function fetchEngageStats(): Promise<EngageStats> {

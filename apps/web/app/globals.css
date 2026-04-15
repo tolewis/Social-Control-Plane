@@ -3537,6 +3537,79 @@ button:active, .chip:active, .listItem:active {
 }
 .engagePostLink:hover { text-decoration: underline; }
 
+/* Shared pagination bar — 25/100 selector + prev/next arrows.
+   Used on Review, Engage, and Queue. Compact horizontal layout on
+   desktop, wraps vertically on narrow screens. */
+.paginationBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 4px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+.paginationCount {
+  color: var(--muted);
+}
+.paginationCount strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.paginationSizeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.paginationSizeSelect {
+  padding: 4px 8px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.paginationSizeSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.paginationNav {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.paginationPageLabel {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.paginationPageLabel strong {
+  color: var(--text);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .paginationBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .paginationControls {
+    justify-content: space-between;
+  }
+}
+
 /* Engage settings bar — compact per-platform row above the tab chips.
    Each row has an on/off toggle, per-run cap, runs/day, and save. When
    `enabled=false` the row gets a muted look so it's obvious at a glance
