@@ -175,10 +175,11 @@ a {
 /* Display wordmark — matches the Outfit / tracking-tight / split-color
    pattern used by Epic Inventory and Contractor-AI. "Social" stays in
    body text color, "Plane" gets the brand accent (amber) so there's a
-   clear anchor word that reads as the product name. */
+   clear anchor word that reads as the product name. Sized to match
+   Epic Inventory's sidebar (<Wordmark size="lg" /> → text-2xl / 1.5rem). */
 .brandName {
   font-family: 'Outfit', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  font-size: 1.22rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.1;
