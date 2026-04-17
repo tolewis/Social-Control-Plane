@@ -98,10 +98,17 @@ const DOCS_MANIFEST: DocEntry[] = [
     filePath: path.join(REPO_ROOT, 'docs', 'Agent-Integration.md'),
   },
   {
+    slug: 'mcp-server',
+    title: 'MCP Server',
+    group: 'Developer',
+    order: 2,
+    filePath: path.join(REPO_ROOT, 'docs', 'MCP-Server.md'),
+  },
+  {
     slug: 'agents',
     title: 'AI Assistant Rules',
     group: 'Developer',
-    order: 2,
+    order: 3,
     filePath: path.join(REPO_ROOT, 'AGENTS.md'),
   },
   {

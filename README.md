@@ -19,7 +19,9 @@ You want to run SCP on your machine, right now:
 3. **`docs/Operating-Guide.md`** — PM2 commands, log locations, common
    failure modes, queue management. Refer when things break.
 4. **`docs/Agent-Integration.md`** — API cookbook for scripts and bots.
-5. **`AGENTS.md`** — hard rules for AI coding assistants working in this
+5. **`docs/MCP-Server.md`** — expose SCP as MCP tools for Claude Desktop,
+   Claude Code, and other agent clients.
+6. **`AGENTS.md`** — hard rules for AI coding assistants working in this
    repo. Read it before letting any LLM touch the codebase.
 
 All of the above render inside the web UI itself via the **Docs** dock
@@ -78,6 +80,7 @@ Do **not** build a Postiz clone monolith. Build a narrower, tougher product arou
 - `apps/web` — Next.js 16 responsive operator UI (standalone production build)
 - `apps/api` — Fastify API with HMAC auth, OAuth flows, encrypted credential storage
 - `apps/worker` — BullMQ publish worker with token refresh and background job handlers
+- `apps/mcp` — Model Context Protocol stdio server exposing the API as agent-callable tools (`docs/MCP-Server.md`)
 - `packages/shared` — shared types/contracts
 - `packages/providers` — provider auth adapters (X, LinkedIn, Facebook, Instagram) with credential injection
 - `packages/renderer` — StrikeFrame-based image renderer, primitives, and ad template scripts

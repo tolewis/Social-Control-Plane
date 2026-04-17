@@ -10,9 +10,9 @@ import { useDrafts } from '../hooks/useDrafts';
 import { useConnections } from '../hooks/useConnections';
 import { publishDraft, deleteDraft, updateDraft, publishBulk } from '../_lib/api';
 import { ChannelFilter, useChannelFilter } from '../_components/ChannelFilter';
-import { detectSlop, groupSlopMatches } from '../_lib/slop';
+import { detectSlop, groupSlopMatches } from '@scp/shared';
 import type { DraftRecord, ConnectionRecord } from '../_lib/api';
-import type { SlopResult } from '../_lib/slop';
+import type { SlopResult } from '@scp/shared';
 
 function connectionLabel(draft: DraftRecord, connections: ConnectionRecord[]): string {
   const conn = connections.find((c) => c.id === draft.connectionId);
@@ -47,7 +47,7 @@ function SlopDetail({ result }: { result: SlopResult }) {
     <div className="slopWarning">
       <div className="slopWarningHeader">AI Slop: {result.rating}/10 — {result.matches.length} {result.matches.length === 1 ? 'flag' : 'flags'}</div>
       <div className="slopWarningBody">
-        {Array.from(groups.entries()).map(([category, items]) => (
+        {Object.entries(groups).map(([category, items]) => (
           <div key={category} className="slopWarningGroup">
             <span className="slopWarningCategory">{category}</span>
             <span className="slopWarningItems">

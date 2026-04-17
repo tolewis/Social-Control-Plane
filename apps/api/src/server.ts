@@ -25,7 +25,7 @@ import { isProviderId, NotImplementedError, PROVIDERS } from '@scp/shared';
 import { prisma } from './db.js';
 import { publishQueue } from './queue.js';
 import { encrypt, decrypt } from './crypto.js';
-import { detectSlop, groupSlopMatches } from './slop.js';
+import { detectSlop, groupSlopMatches } from '@scp/shared';
 
 // Prisma model types for map callback annotations.
 // Defined locally to avoid version-mismatch issues with the generated client.
